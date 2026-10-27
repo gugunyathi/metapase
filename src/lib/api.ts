@@ -120,21 +120,66 @@ export interface ApiWishlistItem {
   createdAt: number;
 }
 
+export interface ApiProductInventory {
+  productId: string;
+  storeId: string;
+  storeName: string;
+  mallId: string;
+  mallName: string;
+  sku: string;
+  name: string;
+  category: string;
+  basePriceZAR: number;
+  floorPriceZAR: number;
+  stockQuantity: number;
+  inStock: boolean;
+  imageUrl?: string;
+  description?: string;
+  tag?: string;
+  updatedAt: number;
+}
+
+export interface ApiMerchantAnalytics {
+  storeId: string;
+  totalSalesCount: number;
+  grossRevenueZAR: number;
+  totalSavingsZAR: number;
+  autonomousSalesCount: number;
+  manualSalesCount: number;
+  redeemedCount: number;
+  pendingRedemptionCount: number;
+}
+
+export interface ApiActivityLog {
+  activityId: string;
+  timestamp: string;
+  type: 'AUTONOMOUS_PURCHASE' | 'MANUAL_PURCHASE' | 'BARGAIN_EVALUATION' | 'VOUCHER_REDEEMED' | 'WISHLIST_CREATED' | 'CREDIT_ADJUSTMENT' | 'INVENTORY_UPDATED' | 'PROXIMITY_PING';
+  actor: 'USER' | 'PERSONAL_AGENT' | 'MERCHANT_AGENT' | 'SYSTEM';
+  userId?: string;
+  storeId?: string;
+  storeName?: string;
+  mallId?: string;
+  summary: string;
+  details: Record<string, unknown>;
+}
+
 export interface ApiTransactionReceipt {
+  receiptId: string;
   voucherCode: string;
   storeId: string;
   storeName: string;
-  productId: string;
-  productName: string;
-  originalPriceZAR: number;
-  finalPriceZAR: number;
-  discountZAR: number;
-  discountPercentage: number;
-  buyerType: 'AUTONOMOUS_AGENT' | 'HUMAN_MANUAL';
-  cardMasked: string;
-  status: 'AUTHORIZED' | 'PAID' | 'REDEEMED';
-  qrVoucherPayload: string;
+  mallId: string;
+  mallName: string;
+  sku: string;
+  itemName: string;
+  amountZAR: number;
+  savingsZAR: number;
+  purchasedBy: 'autonomous_personal_agent' | 'manual_user_checkout';
   timestamp: string;
+  authorizationRef: string;
+  qrPayload: string;
+  status: 'ISSUED' | 'REDEEMED' | 'EXPIRED';
+  userId?: string;
 }
 
 const getJson = async <T>(path: string): Promise<T | null> => {
@@ -159,32 +204,61 @@ export const api = {
   getMalls: () => getJson<{ ok: boolean; count: number; malls: ApiMall[] }>('/api/malls'),
   getMallStores: (mallId: string) => getJson<{ ok: boolean; mallId: string; count: number; stores: unknown[] }>(`/api/malls/${mallId}/stores`),
 
-  // 31 Meta Merchant Agents
+  // 31 Meta Merchant Agents & Details
   getMerchants: () => getJson<{ ok: boolean; count: number; merchants: ApiMerchant[] }>('/api/merchants'),
   getMerchant: (storeId: string) => getJson<{ ok: boolean; merchant: ApiMerchant }>(`/api/merchants/${storeId}`),
 
-  // Transactions: Buy
-  autonomousBuy: (payload: { storeId: string; productId: string; offerPriceZAR: number; notes?: string; userId?: string }) =>
-    postJson<{ ok: boolean; message: string; receipt: ApiTransactionReceipt; remainingAgentCreditZAR: number }>('/api/merchants/autonomous-buy', payload),
+  // Merchant Store Inventory (Products, stock levels)
+  getStoreInventory: (storeId?: string) =>
+    getJson<{ ok?: boolean; count: number; inventory: ApiProductInventory[]; storeId?: string; storeName?: string }>(storeId ? `/api/merchants/${storeId}/inventory` : '/api/merchants/inventory'),
+  updateProductStock: (storeId: string, sku: string, stockQuantity: number) =>
+    postJson<{ success: boolean; item: ApiProductInventory }>(`/api/merchants/${storeId}/inventory/${sku}/stock`, { stockQuantity }),
 
-  manualBuy: (payload: { storeId: string; productId: string; customerName?: string; customerEmail?: string; userId?: string }) =>
-    postJson<{ ok: boolean; message: string; receipt: ApiTransactionReceipt }>('/api/merchants/manual-buy', payload),
+  // Merchant Store Transactions & Analytics
+  getMerchantTransactions: (storeId: string) =>
+    getJson<{ storeId: string; count: number; transactions: ApiTransactionReceipt[] }>(`/api/merchants/${storeId}/transactions`),
+  getMerchantAnalytics: (storeId: string) =>
+    getJson<{ ok: boolean; analytics: ApiMerchantAnalytics }>(`/api/merchants/${storeId}/analytics`),
+
+  // Transactions: Buy
+  autonomousBuy: (payload: { storeId: string; sku: string; maxBudgetZAR: number; userId?: string; virtualCard?: { cardId?: string; last4?: string } }) =>
+    postJson<{ success: boolean; mode: string; receipt: ApiTransactionReceipt; agreedPriceZAR: number; roundsCompleted: number }>('/api/merchants/autonomous-buy', payload),
+
+  manualBuy: (payload: { storeId: string; sku: string; priceZAR?: number; paymentMethod?: string; userId?: string }) =>
+    postJson<{ success: boolean; mode: string; receipt: ApiTransactionReceipt }>('/api/merchants/manual-buy', payload),
 
   // Personal Agent & Promo Credit
-  getUserAgent: (userId = 'usr_guest') => getJson<{ ok: boolean; agent: ApiUserAgent }>(`/api/user/agent?userId=${encodeURIComponent(userId)}`),
-  topUpAgentCredit: (userId: string, amountZAR: number) => postJson<{ ok: boolean; balanceZAR: number }>('/api/user/agent/credit', { userId, amountZAR }),
+  getUserAgent: (userId = 'user_shopper_01') => getJson<ApiUserAgent>(`/api/user/agent?userId=${encodeURIComponent(userId)}`),
+  topUpAgentCredit: (userId: string, amountZAR: number) => postJson<{ success: boolean; balanceZAR: number }>('/api/user/agent/credit', { userId, amountZAR }),
 
   // Wishlist
-  getWishlist: (userId = 'usr_guest') => getJson<{ ok: boolean; items: ApiWishlistItem[] }>(`/api/user/wishlist?userId=${encodeURIComponent(userId)}`),
-  addWishlistItem: (payload: { userId?: string; query: string; category?: string; maxBudgetZAR?: number; autoBuy?: boolean }) =>
-    postJson<{ ok: boolean; item: ApiWishlistItem }>('/api/user/wishlist', payload),
-  deleteWishlistItem: (id: string, userId = 'usr_guest') =>
-    fetch(`${API_BASE}/api/user/wishlist/${id}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' }).then(r => r.json()).catch(() => ({ ok: false })),
-  toggleWishlistAutoBuy: (id: string, autoBuy: boolean, userId = 'usr_guest') =>
-    postJson<{ ok: boolean; autoBuy: boolean }>(`/api/user/wishlist/${id}/toggle`, { userId, autoBuy }),
+  getWishlist: (userId = 'user_shopper_01') => getJson<{ count: number; wishlist: ApiWishlistItem[] }>(`/api/user/wishlist?userId=${encodeURIComponent(userId)}`),
+  addWishlistItem: (payload: { userId?: string; query: string; category?: string; targetMaxPriceZAR?: number; autoBuy?: boolean }) =>
+    postJson<{ success: boolean; item: ApiWishlistItem }>('/api/user/wishlist', payload),
+  deleteWishlistItem: (id: string) =>
+    fetch(`${API_BASE}/api/user/wishlist/${id}`, { method: 'DELETE' }).then(r => r.json()).catch(() => ({ success: false })),
+  toggleWishlistAutoBuy: (id: string) =>
+    postJson<{ success: boolean; item: ApiWishlistItem }>(`/api/user/wishlist/${id}/toggle`, {}),
 
   // Transactions / Receipts / QR Redemption
-  getTransactions: (userId = 'usr_guest') => getJson<{ ok: boolean; count: number; transactions: ApiTransactionReceipt[] }>(`/api/transactions?userId=${encodeURIComponent(userId)}`),
-  getTransaction: (voucherCode: string) => getJson<{ ok: boolean; transaction: ApiTransactionReceipt }>(`/api/transactions/${voucherCode}`),
-  redeemVoucher: (voucherCode: string) => postJson<{ ok: boolean; message: string; transaction: ApiTransactionReceipt }>(`/api/transactions/${voucherCode}/redeem`, {})
+  getTransactions: (filters?: { userId?: string; storeId?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.userId) params.set('userId', filters.userId);
+    if (filters?.storeId) params.set('storeId', filters.storeId);
+    const queryStr = params.toString() ? `?${params.toString()}` : '';
+    return getJson<{ count: number; transactions: ApiTransactionReceipt[] }>(`/api/transactions${queryStr}`);
+  },
+  getTransaction: (voucherCode: string) => getJson<ApiTransactionReceipt>(`/api/transactions/${voucherCode}`),
+  redeemVoucher: (voucherCode: string) => postJson<{ success: boolean; message: string; receipt: ApiTransactionReceipt }>(`/api/transactions/${voucherCode}/redeem`, {}),
+
+  // Live Activity Audit Trail
+  getActivityLog: (filters?: { storeId?: string; userId?: string; type?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.storeId) params.set('storeId', filters.storeId);
+    if (filters?.userId) params.set('userId', filters.userId);
+    if (filters?.type) params.set('type', filters.type);
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    const queryStr = params.toString() ? `?${params.toString()}` : '';
+    return getJson<{ count: number; activities: ApiActivityLog[] }>(`/api/activity${queryStr}`);
+  }
 };

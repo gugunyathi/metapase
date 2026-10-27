@@ -701,6 +701,25 @@ const ROUTES: Record<string, RouteHandler> = {
       });
     }
 
+    try {
+      await db.activities.log({
+        type: 'BARGAIN_EVALUATION',
+        actor: 'MERCHANT_AGENT',
+        storeId: agent.storeId,
+        storeName: agent.storeName,
+        mallId: agent.mallId,
+        summary: `${agent.storeName} evaluated offer for SKU ${payload.sku}: ${evalResult.status} (R${evalResult.finalPriceZAR})`,
+        details: {
+          sessionId: payload.sessionId,
+          sku: payload.sku,
+          offerZAR: payload.offerZAR,
+          finalPriceZAR: evalResult.finalPriceZAR,
+          status: evalResult.status,
+          message: evalResult.message
+        }
+      });
+    } catch {}
+
     return [200, evalResult];
   },
 
@@ -709,6 +728,7 @@ const ROUTES: Record<string, RouteHandler> = {
       storeId?: string;
       sku?: string;
       maxBudgetZAR?: number;
+      userId?: string;
       virtualCard?: {
         cardId?: string;
         last4?: string;
@@ -765,10 +785,38 @@ const ROUTES: Record<string, RouteHandler> = {
       authorizationId: payload.virtualCard?.authorizationId ?? `AUTH_${randomBytes(6).toString('hex').toUpperCase()}`
     });
 
-    // Save transaction to database and deduct promo credit
+    // Tag user ID onto receipt
+    const buyerUserId = payload?.userId || (req.headers['x-user-id'] as string) || 'user_shopper_01';
+    receipt.userId = buyerUserId;
+
+    // Save transaction to database, deduct promo credit, decrement product stock
     await db.transactions.save(receipt);
     try {
+      await db.inventory.decrementStock(payload.sku, 1);
       await db.agents.deductCredit('agent_personal_shopper_01', evaluation.finalPriceZAR);
+    } catch {}
+
+    // Log real-time activity to database
+    try {
+      await db.activities.log({
+        type: 'AUTONOMOUS_PURCHASE',
+        actor: 'PERSONAL_AGENT',
+        userId: buyerUserId,
+        storeId: agent.storeId,
+        storeName: agent.storeName,
+        mallId: agent.mallId,
+        summary: `Autonomous purchase: ${receipt.itemName} at ${agent.storeName} for R${receipt.amountZAR} (Saved R${receipt.savingsZAR})`,
+        details: {
+          receiptId: receipt.receiptId,
+          voucherCode: receipt.voucherCode,
+          sku: receipt.sku,
+          originalPriceZAR: receipt.amountZAR + receipt.savingsZAR,
+          finalPriceZAR: receipt.amountZAR,
+          savingsZAR: receipt.savingsZAR,
+          roundsCompleted: round,
+          cardLast4: '8821'
+        }
+      });
     } catch {}
 
     return [200, {
@@ -786,6 +834,7 @@ const ROUTES: Record<string, RouteHandler> = {
       sku?: string;
       priceZAR?: number;
       paymentMethod?: string;
+      userId?: string;
     }>(req);
 
     const storeId = payload?.storeId || (req.headers['x-param-store-id'] as string);
@@ -804,8 +853,34 @@ const ROUTES: Record<string, RouteHandler> = {
       paymentMethod: payload.paymentMethod ?? '1click_card'
     });
 
-    // Save transaction receipt to database
+    const buyerUserId = payload?.userId || (req.headers['x-user-id'] as string) || 'user_shopper_01';
+    receipt.userId = buyerUserId;
+
+    // Save transaction receipt to database and decrement stock
     await db.transactions.save(receipt);
+    try {
+      await db.inventory.decrementStock(payload.sku, 1);
+    } catch {}
+
+    // Log manual checkout activity to database
+    try {
+      await db.activities.log({
+        type: 'MANUAL_PURCHASE',
+        actor: 'USER',
+        userId: buyerUserId,
+        storeId: agent.storeId,
+        storeName: agent.storeName,
+        mallId: agent.mallId,
+        summary: `Manual 1-click checkout: ${receipt.itemName} at ${agent.storeName} for R${receipt.amountZAR}`,
+        details: {
+          receiptId: receipt.receiptId,
+          voucherCode: receipt.voucherCode,
+          sku: receipt.sku,
+          amountZAR: receipt.amountZAR,
+          savingsZAR: receipt.savingsZAR
+        }
+      });
+    } catch {}
 
     return [200, {
       success: true,
@@ -898,8 +973,78 @@ const ROUTES: Record<string, RouteHandler> = {
   },
 
   // TRANSACTIONS & VOUCHERS APIS
-  'GET /api/transactions': async () => {
-    const list = await db.transactions.list();
+  // MERCHANT INVENTORY & STORE MANAGEMENT
+  'GET /api/merchants/inventory': async req => {
+    const storeId = req.headers['x-param-store-id'] as string;
+    if (!storeId) {
+      const allInventory = await db.inventory.listAll();
+      return [200, { count: allInventory.length, inventory: allInventory }];
+    }
+    const storeInventory = await db.inventory.listByStore(storeId);
+    const store = await db.stores.findByStoreId(storeId);
+    return [200, {
+      storeId,
+      storeName: store?.storeName ?? storeId,
+      mallId: store?.mallId ?? '',
+      mallName: store?.mallName ?? '',
+      count: storeInventory.length,
+      inventory: storeInventory
+    }];
+  },
+
+  'POST /api/merchants/inventory/stock': async req => {
+    const storeId = req.headers['x-param-store-id'] as string;
+    const sku = req.headers['x-param-sku'] as string;
+    const payload = await parseJsonBody<{ stockQuantity: number }>(req);
+    if (!sku || payload?.stockQuantity === undefined) {
+      return [400, { error: 'INVALID_PAYLOAD', message: 'sku and stockQuantity are required.' }];
+    }
+    const updated = await db.inventory.updateStock(sku, Number(payload.stockQuantity));
+    if (!updated) return [404, { error: 'ITEM_NOT_FOUND', message: `SKU ${sku} not found.` }];
+
+    try {
+      await db.activities.log({
+        type: 'INVENTORY_UPDATED',
+        actor: 'MERCHANT_AGENT',
+        storeId,
+        storeName: updated.storeName,
+        mallId: updated.mallId,
+        summary: `Stock updated for ${updated.name} (SKU: ${sku}): ${updated.stockQuantity} units available`,
+        details: { sku, stockQuantity: updated.stockQuantity, inStock: updated.inStock }
+      });
+    } catch {}
+
+    return [200, { success: true, item: updated }];
+  },
+
+  'GET /api/merchants/transactions': async req => {
+    const storeId = req.headers['x-param-store-id'] as string;
+    if (!storeId) return [400, { error: 'MISSING_STORE_ID', message: 'storeId is required.' }];
+    const transactions = await db.transactions.listByStore(storeId);
+    return [200, { storeId, count: transactions.length, transactions }];
+  },
+
+  'GET /api/merchants/analytics': async req => {
+    const storeId = req.headers['x-param-store-id'] as string;
+    if (!storeId) return [400, { error: 'MISSING_STORE_ID', message: 'storeId is required.' }];
+    const analytics = await db.transactions.getMerchantAnalytics(storeId);
+    return [200, { ok: true, analytics }];
+  },
+
+  // TRANSACTIONS & VOUCHERS APIS
+  'GET /api/transactions': async req => {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const userId = url.searchParams.get('userId') || (req.headers['x-user-id'] as string);
+    const storeId = url.searchParams.get('storeId') || (req.headers['x-store-id'] as string);
+
+    let list;
+    if (storeId) {
+      list = await db.transactions.listByStore(storeId);
+    } else if (userId && userId !== 'all') {
+      list = await db.transactions.listByUser(userId);
+    } else {
+      list = await db.transactions.list();
+    }
     return [200, { count: list.length, transactions: list }];
   },
 
@@ -919,7 +1064,33 @@ const ROUTES: Record<string, RouteHandler> = {
     if (!receipt) return [404, { error: 'VOUCHER_NOT_FOUND', message: 'Voucher not found.' }];
     receipt.status = 'REDEEMED';
     await db.transactions.save(receipt);
+
+    try {
+      await db.activities.log({
+        type: 'VOUCHER_REDEEMED',
+        actor: 'MERCHANT_AGENT',
+        userId: receipt.userId,
+        storeId: receipt.storeId,
+        storeName: receipt.storeName,
+        mallId: receipt.mallId,
+        summary: `In-store voucher ${code} redeemed at ${receipt.storeName} for ${receipt.itemName}`,
+        details: { voucherCode: code, sku: receipt.sku, amountZAR: receipt.amountZAR }
+      });
+    } catch {}
+
     return [200, { success: true, message: 'Voucher redeemed at store checkout.', receipt }];
+  },
+
+  // LIVE SYSTEM & AUDIT ACTIVITY FEED
+  'GET /api/activity': async req => {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const storeId = url.searchParams.get('storeId') || undefined;
+    const userId = url.searchParams.get('userId') || undefined;
+    const type = url.searchParams.get('type') || undefined;
+    const limit = url.searchParams.get('limit') ? Number(url.searchParams.get('limit')) : 50;
+
+    const activities = await db.activities.list({ storeId, userId, type, limit });
+    return [200, { count: activities.length, activities }];
   }
 };
 
@@ -933,7 +1104,7 @@ const server = createServer(async (req, res) => {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-Agent-Protocol, X-Digital-Badge, X-User-Id',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Agent-Protocol, X-Digital-Badge, X-User-Id, X-Store-Id',
         'Vary': 'Origin'
       });
       res.end();
@@ -947,6 +1118,28 @@ const server = createServer(async (req, res) => {
   let handler = ROUTES[key];
   if (!handler) {
     // Dynamic Merchant routes
+    const stockMatch = path.match(/^\/api\/merchants\/([^\/]+)\/inventory\/([^\/]+)\/stock$/);
+    if (req.method === 'POST' && stockMatch) {
+      req.headers['x-param-store-id'] = stockMatch[1];
+      req.headers['x-param-sku'] = stockMatch[2];
+      handler = ROUTES['POST /api/merchants/inventory/stock'];
+    }
+    const invMatch = path.match(/^\/api\/merchants\/([^\/]+)\/inventory$/);
+    if (req.method === 'GET' && invMatch) {
+      req.headers['x-param-store-id'] = invMatch[1];
+      handler = ROUTES['GET /api/merchants/inventory'];
+    }
+    const merchTxMatch = path.match(/^\/api\/merchants\/([^\/]+)\/transactions$/);
+    if (req.method === 'GET' && merchTxMatch) {
+      req.headers['x-param-store-id'] = merchTxMatch[1];
+      handler = ROUTES['GET /api/merchants/transactions'];
+    }
+    const merchAnalyticsMatch = path.match(/^\/api\/merchants\/([^\/]+)\/analytics$/);
+    if (req.method === 'GET' && merchAnalyticsMatch) {
+      req.headers['x-param-store-id'] = merchAnalyticsMatch[1];
+      handler = ROUTES['GET /api/merchants/analytics'];
+    }
+
     const manualMatch = path.match(/^\/api\/merchants\/([^\/]+)\/manual-buy$/);
     if (req.method === 'POST' && manualMatch) {
       req.headers['x-param-store-id'] = manualMatch[1];

@@ -10,6 +10,7 @@ import { REAL_PRODUCTS, CatalogProduct } from '../config/products';
 import { CATEGORY_STYLE } from '../components/DealCard';
 import { haversineM } from '../lib/geo';
 import { formatDistance, formatZAR } from '../lib/format';
+import MerchantHubModal from '../components/MerchantHubModal';
 
 interface DiscoverPageProps {
   userFix: GeoFix | null;
@@ -60,6 +61,7 @@ export default function DiscoverPage({
   const [addedSku, setAddedSku] = useState<string | null>(null);
   const [copiedVoucher, setCopiedVoucher] = useState<boolean>(false);
   const [txModal, setTxModal] = useState<TransactionModalState | null>(null);
+  const [merchantHubStoreId, setMerchantHubStoreId] = useState<string | null>(null);
 
   // Compute distance from user GPS to each mall
   const mallsWithDistance = useMemo(() => {
@@ -476,12 +478,28 @@ export default function DiscoverPage({
             </p>
           </div>
 
-          {/* Active Mall Badge */}
-          <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 px-3.5 py-2.5 backdrop-blur">
-            <MapPin className="h-4 w-4 text-emerald-400 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-emerald-400">Active Geofenced Venue</p>
-              <p className="truncate text-xs font-bold text-white">{activeMall.name}</p>
+          {/* Header Action Badges */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMerchantHubStoreId(activeMall.stores[0]?.id || 'sc_zara')}
+              className="flex items-center gap-2 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-3.5 py-2.5 backdrop-blur hover:bg-amber-400/20 text-amber-200 transition shadow-sm shadow-amber-400/10"
+              title="Open Merchant & Database Control Console"
+            >
+              <Building2 className="h-4 w-4 text-amber-300" />
+              <div className="text-left">
+                <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Database & Ledger</p>
+                <p className="text-xs font-black text-white">Merchant Console</p>
+              </div>
+            </button>
+
+            {/* Active Mall Badge */}
+            <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 px-3.5 py-2.5 backdrop-blur">
+              <MapPin className="h-4 w-4 text-emerald-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold text-emerald-400">Active Geofenced Venue</p>
+                <p className="truncate text-xs font-bold text-white">{activeMall.name}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -835,28 +853,33 @@ export default function DiscoverPage({
             return (
               <div
                 key={store.id}
-                className="flex items-center gap-3.5 rounded-2xl border border-white/[0.06] bg-slate-900/50 p-3.5 backdrop-blur hover:border-white/15 transition"
+                onClick={() => setMerchantHubStoreId(store.id)}
+                className="group flex items-center gap-3.5 rounded-2xl border border-white/[0.06] bg-slate-900/50 p-3.5 backdrop-blur hover:border-amber-400/40 hover:bg-slate-900/80 cursor-pointer transition shadow-sm"
               >
-                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${style.tile}`}>
+                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${style.tile} group-hover:scale-105 transition`}>
                   <Icon className="h-5 w-5 text-white" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-1">
-                    <p className="truncate text-sm font-bold text-white">{store.name}</p>
+                    <p className="truncate text-sm font-bold text-white group-hover:text-amber-200 transition">{store.name}</p>
                     <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-slate-300 shrink-0">
                       Level {store.floor}
                     </span>
                   </div>
                   <p className="truncate text-xs text-slate-400">{store.tagline}</p>
                   
-                  {/* Meta Merchant Agent Badge */}
-                  <div className="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  {/* Meta Merchant Agent Badge & Inspect hint */}
+                  <div className="mt-1 flex items-center justify-between gap-1 text-[10px] font-semibold">
+                    <span className="flex items-center gap-1.5 text-emerald-400">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      <span>Meta Agent Active</span>
                     </span>
-                    <span>Meta Merchant Agent Active</span>
-                    <span className="text-slate-500">• {store.mallName}</span>
+                    <span className="text-amber-300/80 group-hover:text-amber-300 transition">
+                      View Inventory & Sales →
+                    </span>
                   </div>
                 </div>
               </div>
@@ -864,6 +887,15 @@ export default function DiscoverPage({
           })}
         </div>
       </section>
+
+      {/* ── Merchant Hub Modal (Inventory, Stock, Sales Ledger, DB Audit Feed) ── */}
+      {merchantHubStoreId && (
+        <MerchantHubModal
+          initialStoreId={merchantHubStoreId}
+          onClose={() => setMerchantHubStoreId(null)}
+          onRedeemVoucher={() => {}}
+        />
+      )}
     </div>
   );
 }
