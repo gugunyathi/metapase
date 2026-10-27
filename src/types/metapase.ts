@@ -251,3 +251,30 @@ export interface BuyResult {
   ok: boolean;
   note: string | null;
 }
+
+export interface UserPasskeyAuth {
+  signedIn: boolean;
+  userId: string;
+  userName: string;
+  email: string;
+  credentialId: string | null;
+  authMethod: 'webauthn_passkey' | 'sandbox_passkey';
+  signedInAt: number;
+  agentId: string;
+  agentName: string;
+  agentCreditBalanceZAR: number; // R1,000 promo credit
+  promoCode: string;
+}
+
+export interface WishlistItem {
+  id: string;
+  query: string;
+  targetMaxPriceZAR: number;
+  autoBuy: boolean; // if true, auto-buys using promo credit, else parks
+  addedAt: number;
+  status: 'active' | 'bought' | 'parked';
+  matchedItemName?: string;
+  matchedPriceZAR?: number;
+  matchedStoreName?: string;
+  voucherCode?: string;
+}

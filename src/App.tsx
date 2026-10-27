@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Bot, Building2, Car, Compass as CompassIcon, Glasses, Laptop, Navigation2, RotateCcw, RotateCw, Satellite, ShoppingBag, Smartphone, SquareParking, Volume2, Watch, Wallet } from 'lucide-react';
+import { Bot, Building2, Car, Compass as CompassIcon, Glasses, Laptop, Navigation2, RotateCcw, RotateCw, Satellite, ShoppingBag, Smartphone, SquareParking, Volume2, Watch, Wallet, Fingerprint, Gift, Mic } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { CartLine, DataSource, Deal, DealCategory, DealStatus, EngineEvent, DeviceProfile, GeoPoint, IntentFilter, LogEntry, NodeReading, PageId, PlacedStore, VenueMode } from './types/metapase';
+import { CartLine, DataSource, Deal, DealCategory, DealStatus, EngineEvent, DeviceProfile, GeoPoint, IntentFilter, LogEntry, NodeReading, PageId, PlacedStore, VenueMode, UserPasskeyAuth, WishlistItem } from './types/metapase';
 import { MATCH_RADIUS_M } from './config/venue';
 import { DEFAULT_MALL_ID, MALLS_DATABASE, PROXIMITY_ZONES, ProximityRadiusMode } from './config/malls';
 import { REAL_PRODUCTS } from './config/products';
@@ -38,6 +38,8 @@ import HeadingTape from './components/HeadingTape';
 import DealCard from './components/DealCard';
 import ActivityLog from './components/ActivityLog';
 import PlaceholderDealCard from './components/PlaceholderDealCard';
+import PasskeyAuthModal from './components/PasskeyAuthModal';
+import WishlistModal from './components/WishlistModal';
 
 const VIEWS: { id: DeviceProfile; label: string; icon: LucideIcon }[] = [
   { id: 'desktop', label: 'Desktop', icon: Laptop },
@@ -182,6 +184,70 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pinRequest, setPinRequest] = useState<PinRequest | null>(null);
   const [lastTurnAt, setLastTurnAt] = useState<number>(0);
+
+  // Human User Passkey Authentication & Personal Shopping Agent with R1,000 Promo Credit
+  const [auth, setAuth] = useState<UserPasskeyAuth | null>(() => {
+    try {
+      const stored = localStorage.getItem('metapase:auth');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return {
+      signedIn: true,
+      userId: 'user_shopper_01',
+      userName: 'Gugu Nyathi',
+      email: 'gugu@metapase.app',
+      credentialId: 'pk_cred_webauthn_za01',
+      authMethod: 'webauthn_passkey',
+      signedInAt: Date.now(),
+      agentId: 'agent_personal_shopper_01',
+      agentName: "Gugu's Personal Muse Agent",
+      agentCreditBalanceZAR: 1000,
+      promoCode: 'WELCOME-R1000-ACTIVE'
+    };
+  });
+
+  // User Shopping Wishlist (Voice & Text)
+  const [wishlist, setWishlist] = useState<WishlistItem[]>(() => {
+    try {
+      const stored = localStorage.getItem('metapase:wishlist');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [
+      {
+        id: 'wish_1',
+        query: 'Linen Blazer',
+        targetMaxPriceZAR: 1100,
+        autoBuy: true,
+        addedAt: Date.now(),
+        status: 'active'
+      },
+      {
+        id: 'wish_2',
+        query: 'Nike Pegasus',
+        targetMaxPriceZAR: 2200,
+        autoBuy: true,
+        addedAt: Date.now(),
+        status: 'active'
+      }
+    ];
+  });
+
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isWishlistModalOpen, setIsWishlistModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('metapase:wishlist', JSON.stringify(wishlist));
+    } catch {}
+  }, [wishlist]);
+
+  useEffect(() => {
+    if (auth) {
+      try {
+        localStorage.setItem('metapase:auth', JSON.stringify(auth));
+      } catch {}
+    }
+  }, [auth]);
 
   // Always track user location for drive-by commuters and mall detection
   const { fix, error: geoError, supported: geoSupported } = useGeolocation(true);
@@ -399,6 +465,84 @@ export default function App() {
       break;
     }
   }, [engine.deals, autopilot, autoBuyActive, intent, maxBudgetZAR, addLog, engine.pay]);
+
+  // Wishlist Proximity Discount Listener: Matches products across 31 stores, auto-buys with R1000 credit or parks
+  const wishlistEvaluatedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!auth?.signedIn || wishlist.length === 0) return;
+
+    for (const deal of Object.values(engine.deals)) {
+      const price = deal.negotiatedPriceZAR ?? deal.ad.stickerPriceZAR;
+      const dealKey = `${deal.storeId}_${deal.ad.sku}_${deal.status}_${price}`;
+      if (wishlistEvaluatedRef.current.has(dealKey)) continue;
+
+      const itemName = deal.ad.itemName.toLowerCase();
+      const sku = deal.ad.sku.toLowerCase();
+      const category = deal.category.toLowerCase();
+
+      const matchedWish = wishlist.find(w =>
+        w.status === 'active' &&
+        (itemName.includes(w.query.toLowerCase()) ||
+         sku.includes(w.query.toLowerCase()) ||
+         category.includes(w.query.toLowerCase()))
+      );
+
+      if (!matchedWish) continue;
+      wishlistEvaluatedRef.current.add(dealKey);
+
+      // Evaluate: Auto-Buy with R1000 credit vs Park
+      if (matchedWish.autoBuy && auth.agentCreditBalanceZAR >= price) {
+        // Auto-Buy with promo credit!
+        const newBalance = Math.max(0, auth.agentCreditBalanceZAR - price);
+        setAuth(prev => prev ? ({ ...prev, agentCreditBalanceZAR: newBalance }) : null);
+
+        setWishlist(prev => prev.map(w => w.id === matchedWish.id ? ({
+          ...w,
+          status: 'bought',
+          matchedItemName: deal.ad.itemName,
+          matchedPriceZAR: price,
+          matchedStoreName: deal.location.outletName,
+          voucherCode: `MP-AUTO-${deal.storeId.toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+        }) : w));
+
+        void engine.pay(deal.storeId);
+
+        addLog(
+          'LLAMA_AGENT',
+          `🤖 Wishlist Match! Personal Agent auto-bought "${deal.ad.itemName}" at ${deal.location.outletName} for ${formatZAR(price)} using R1,000 promo credit! (Remaining credit: ${formatZAR(newBalance)})`,
+          'success'
+        );
+
+        if (commerce.prefs.voice) {
+          speakText(`Personal Agent auto-bought ${deal.ad.itemName} for ${price} Rand using promo credit.`);
+        }
+      } else {
+        // Exceeds credit or auto-buy off: Park deal for review
+        emitEvent({
+          type: 'parked',
+          deal,
+          lastStorePriceZAR: price,
+          bestOfferZAR: matchedWish.targetMaxPriceZAR,
+          reason: `Wishlist match for "${matchedWish.query}". Parked for your review.`
+        });
+
+        setWishlist(prev => prev.map(w => w.id === matchedWish.id ? ({
+          ...w,
+          status: 'parked',
+          matchedItemName: deal.ad.itemName,
+          matchedPriceZAR: price,
+          matchedStoreName: deal.location.outletName
+        }) : w));
+
+        addLog(
+          'SYSTEM',
+          `🅿️ Wishlist Match: Parked "${deal.ad.itemName}" at ${formatZAR(price)} for your review (exceeds ${formatZAR(auth.agentCreditBalanceZAR)} credit balance).`,
+          'info'
+        );
+      }
+    }
+  }, [engine.deals, auth, wishlist, addLog, emitEvent, commerce.prefs.voice, engine.pay]);
 
   const purchaseCountRef = useRef<number>(0);
   useEffect(() => {
@@ -996,6 +1140,50 @@ export default function App() {
             </div>
           </div>
 
+          {/* Passkey Authentication & Wishlist Quick Bar */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {!auth?.signedIn ? (
+              <button
+                type="button"
+                onClick={() => setIsAuthModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-300 via-amber-200 to-emerald-300 px-3 py-1.5 text-xs font-black text-slate-950 transition hover:opacity-95 shadow-sm shadow-amber-300/20"
+              >
+                <Fingerprint className="h-4 w-4" />
+                <span>Passkey Sign In</span>
+                <span className="hidden sm:inline-block rounded-full bg-black/20 px-2 py-0.5 text-[10px] font-extrabold">
+                  +R1,000 Credit
+                </span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Promo Credit Balance */}
+                <button
+                  type="button"
+                  onClick={() => setIsWishlistModalOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-400/20 transition"
+                  title="Your Personal Agent Promo Credit for Autonomous Buys"
+                >
+                  <Gift className="h-3.5 w-3.5 text-amber-300" />
+                  <span>{formatZAR(auth.agentCreditBalanceZAR)}</span>
+                </button>
+
+                {/* Wishlist Voice & Text Trigger */}
+                <button
+                  type="button"
+                  onClick={() => setIsWishlistModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-purple-500/15 px-3 py-1 text-xs font-bold text-purple-200 hover:bg-purple-500/25 transition"
+                  title="Speak or edit your shopping wishlist"
+                >
+                  <Mic className="h-3.5 w-3.5 text-purple-300" />
+                  <span className="hidden min-[500px]:inline">Wishlist</span>
+                  <span className="grid h-4 w-4 place-items-center rounded-full bg-purple-500/30 text-[10px]">
+                    {wishlist.filter(w => w.status === 'active').length}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex min-w-0 items-center">
             <nav className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-2xl border border-white/[0.06] bg-black/30 p-1 [scrollbar-width:none] sm:gap-1" aria-label="Device view">
               <button type="button" onClick={selectAutoView} aria-pressed={isAutoDetected} title={`Detected: ${detectedProfile}`} className={`shrink-0 rounded-xl px-2 py-1.5 text-xs font-semibold transition sm:px-2.5 ${isAutoDetected ? 'bg-white text-slate-950' : 'text-slate-400 hover:text-white'}`}>Auto</button>
@@ -1073,6 +1261,41 @@ export default function App() {
       <Sheet open={sheet === 'bag'} onClose={() => setSheet(null)} title="Shopping bag" subtitle="Everything the agent has bought for you." icon={ShoppingBag}>
         <BagList purchases={commerce.purchases} onClearAll={commerce.clearPurchases} />
       </Sheet>
+
+      {/* Passkey Authentication Modal */}
+      <PasskeyAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={newAuth => {
+          setAuth(newAuth);
+          addLog('META_PAY', `Signed in as ${newAuth.userName} with Passkey. Personal Shopping Agent provisioned with R1,000 promo credit!`, 'success');
+          setTimeout(() => setIsWishlistModalOpen(true), 350);
+        }}
+      />
+
+      {/* Voice & Text Shopping Wishlist Modal */}
+      <WishlistModal
+        isOpen={isWishlistModalOpen}
+        onClose={() => setIsWishlistModalOpen(false)}
+        wishlist={wishlist}
+        agentCreditBalanceZAR={auth?.agentCreditBalanceZAR ?? 1000}
+        onAddWishlistItem={item => {
+          const newItem: WishlistItem = {
+            id: `wish_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            addedAt: Date.now(),
+            status: 'active',
+            ...item
+          };
+          setWishlist(prev => [newItem, ...prev]);
+          addLog('LLAMA_AGENT', `Added "${item.query}" to your monitored wishlist (Budget: ${formatZAR(item.targetMaxPriceZAR)}). Scanning mall beacons...`, 'info');
+        }}
+        onRemoveWishlistItem={id => {
+          setWishlist(prev => prev.filter(w => w.id !== id));
+        }}
+        onToggleAutoBuy={id => {
+          setWishlist(prev => prev.map(w => w.id === id ? ({ ...w, autoBuy: !w.autoBuy }) : w));
+        }}
+      />
     </div>
   );
 }
