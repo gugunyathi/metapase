@@ -1,0 +1,26 @@
+{
+  "name": "negotiateProximityRetailDeal",
+  "description": "Negotiates a price for a promoted item at a nearby store. Call it when the proximity service returns a campaign within the match radius (50 m by default). The tool runs up to five offer rounds against POST /api/agent/bargain and never offers above the shopper's budget.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "campaignId": {
+        "type": "string",
+        "description": "Campaign identifier from adContext.campaignId in the proximity response."
+      },
+      "targetSKU": {
+        "type": "string",
+        "description": "Stock keeping unit from adContext.sku in the proximity response."
+      },
+      "initialOfferZAR": {
+        "type": "number",
+        "description": "Opening offer in rand. The app uses 75% of the sticker price."
+      },
+      "maxBudgetCeilingZAR": {
+        "type": "number",
+        "description": "The most the shopper will pay. No offer may exceed it."
+      }
+    },
+    "required": ["campaignId", "targetSKU", "initialOfferZAR", "maxBudgetCeilingZAR"]
+  }
+}
