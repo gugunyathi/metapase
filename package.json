@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "server": "tsx server/server.ts",
+    "agent:shopping": "tsx agent/personalShoppingAgent.ts",
     "dev:all": "concurrently --kill-others-on-fail -n SERVER,FRONTEND -c cyan,magenta \"tsx server/server.ts\" \"vite\""
   },
   "dependencies": {
