@@ -1,6 +1,8 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, createPublicKey, randomBytes, verify as verifySignature } from 'node:crypto';
 import { getAllMerchantAgents, getMerchantAgent } from '../agent/merchantAgents.js';
+import { MALLS_DATABASE } from '../src/config/malls.js';
+import { db, initDatabase, isDbConnected } from './db.js';
 
 type Category = 'apparel' | 'footwear' | 'groceries' | 'electronics' | 'beauty';
 
@@ -552,8 +554,77 @@ const ROUTES: Record<string, RouteHandler> = {
       engine: 'Metapase Multi-Agent Engine',
       protocol: 'Personal Agent Protocol 1.0 (Meta / Shopify / Stripe / Sierra / Walmart)',
       activeMerchantsCount: agents.length,
+      database: isDbConnected() ? 'connected (mongodb)' : 'active (in-memory persistence)',
       timestamp: new Date().toISOString()
     }];
+  },
+
+  'GET /api/info': async () => [200, {
+    name: 'Metapase Proximity Commerce Engine',
+    version: '1.0.0',
+    protocol: 'Personal Agent Protocol 1.0',
+    partners: ['Meta', 'Shopify', 'Stripe', 'Sierra', 'Walmart'],
+    matchRadiusM: MATCH_RADIUS_M,
+    rpId: RP_ID,
+    database: isDbConnected() ? 'MongoDB Atlas' : 'In-Memory Persistence',
+    merchantsOnline: getAllMerchantAgents().length,
+    mallsCount: MALLS_DATABASE.length,
+    endpoints: [
+      'GET /api/health',
+      'GET /api/info',
+      'GET /api/malls',
+      'GET /api/malls/:mallId',
+      'GET /api/malls/:mallId/stores',
+      'POST /api/proximity/ping',
+      'GET /api/merchants',
+      'GET /api/merchants/:storeId',
+      'POST /api/merchants/bargain',
+      'POST /api/merchants/autonomous-buy',
+      'POST /api/merchants/manual-buy',
+      'GET /api/user/agent',
+      'POST /api/user/agent/credit',
+      'GET /api/user/wishlist',
+      'POST /api/user/wishlist',
+      'DELETE /api/user/wishlist/:id',
+      'POST /api/user/wishlist/:id/toggle',
+      'GET /api/transactions',
+      'GET /api/transactions/:voucherCode',
+      'POST /api/transactions/:voucherCode/redeem',
+      'POST /api/pay/passkey/challenge',
+      'POST /api/pay/passkey/register',
+      'POST /api/pay/settle'
+    ]
+  }],
+
+  'GET /api/malls': async () => [200, {
+    count: MALLS_DATABASE.length,
+    malls: MALLS_DATABASE.map(m => ({
+      id: m.id,
+      name: m.name,
+      shortName: m.shortName,
+      tagline: m.tagline,
+      city: m.city,
+      suburb: m.suburb,
+      address: m.address,
+      websiteUrl: m.websiteUrl,
+      gpsCenter: m.gpsCenter,
+      geofenceRadiusM: m.geofenceRadiusM,
+      storeCount: m.stores.length
+    }))
+  }],
+
+  'GET /api/malls/detail': async req => {
+    const mallId = req.headers['x-param-mall-id'] as string;
+    const mall = MALLS_DATABASE.find(m => m.id === mallId);
+    if (!mall) return [404, { error: 'MALL_NOT_FOUND', message: `Mall ${mallId} not found.` }];
+    return [200, mall];
+  },
+
+  'GET /api/malls/stores': async req => {
+    const mallId = req.headers['x-param-mall-id'] as string;
+    const mall = MALLS_DATABASE.find(m => m.id === mallId);
+    if (!mall) return [404, { error: 'MALL_NOT_FOUND', message: `Mall ${mallId} not found.` }];
+    return [200, { mallId: mall.id, mallName: mall.name, count: mall.stores.length, stores: mall.stores }];
   },
 
   'GET /api/merchants': async () => {
@@ -577,6 +648,22 @@ const ROUTES: Record<string, RouteHandler> = {
           imageUrl: c.imageUrl
         }))
       }))
+    }];
+  },
+
+  'GET /api/merchants/detail': async req => {
+    const storeId = req.headers['x-param-store-id'] as string;
+    const agent = getMerchantAgent(storeId);
+    if (!agent) return [404, { error: 'MERCHANT_NOT_FOUND', message: `No agent found for storeId: ${storeId}` }];
+    return [200, {
+      storeId: agent.storeId,
+      storeName: agent.storeName,
+      mallId: agent.mallId,
+      mallName: agent.mallName,
+      category: agent.category,
+      protocolVersion: agent.protocolVersion,
+      policy: agent.policy,
+      catalog: agent.getCatalog()
     }];
   },
 
@@ -639,7 +726,7 @@ const ROUTES: Record<string, RouteHandler> = {
       return [404, { error: 'MERCHANT_NOT_FOUND', message: `No Meta Merchant Agent for store: ${storeId}` }];
     }
 
-    // Step 1: Automated bargaining
+    // Automated multi-round bargaining
     const sessionId = `auto_sess_${randomBytes(8).toString('hex')}`;
     let offer = Math.round(payload.maxBudgetZAR * 0.78);
     let evaluation = agent.evaluateAutonomousOffer({
@@ -670,13 +757,19 @@ const ROUTES: Record<string, RouteHandler> = {
       }];
     }
 
-    // Step 2: Settle autonomous order
+    // Settle autonomous order
     const receipt = agent.settleAutonomousOrder({
       transactionToken: evaluation.transactionToken,
       cardId: payload.virtualCard?.cardId ?? `ic_auto_${randomBytes(6).toString('hex')}`,
       last4: payload.virtualCard?.last4 ?? '8821',
       authorizationId: payload.virtualCard?.authorizationId ?? `AUTH_${randomBytes(6).toString('hex').toUpperCase()}`
     });
+
+    // Save transaction to database and deduct promo credit
+    await db.transactions.save(receipt);
+    try {
+      await db.agents.deductCredit('agent_personal_shopper_01', evaluation.finalPriceZAR);
+    } catch {}
 
     return [200, {
       success: true,
@@ -711,11 +804,122 @@ const ROUTES: Record<string, RouteHandler> = {
       paymentMethod: payload.paymentMethod ?? '1click_card'
     });
 
+    // Save transaction receipt to database
+    await db.transactions.save(receipt);
+
     return [200, {
       success: true,
       mode: 'manual_user_checkout',
       receipt
     }];
+  },
+
+  // USER & PERSONAL AGENT APIS
+  'GET /api/user/agent': async req => {
+    const userId = (req.headers['x-user-id'] as string) || 'user_shopper_01';
+    let agent = await db.agents.findByUserId(userId);
+    if (!agent) {
+      agent = await db.agents.upsert({
+        agentId: `agent_${userId}`,
+        userId,
+        agentName: 'Personal Muse Agent',
+        creditBalanceZAR: 1000,
+        promoCode: 'WELCOME-R1000-ACTIVE',
+        delegationScope: ['browse', 'bargain', 'transact'],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
+    return [200, agent];
+  },
+
+  'POST /api/user/agent/credit': async req => {
+    const payload = await parseJsonBody<{ userId?: string; amountZAR: number; action?: 'add' | 'deduct' }>(req);
+    if (!payload?.amountZAR) return [400, { error: 'INVALID_PAYLOAD', message: 'amountZAR is required.' }];
+    const userId = payload.userId || 'user_shopper_01';
+    let agent = await db.agents.findByUserId(userId);
+    if (!agent) return [404, { error: 'AGENT_NOT_FOUND', message: 'Agent not found.' }];
+
+    if (payload.action === 'deduct') {
+      const balance = await db.agents.deductCredit(agent.agentId, payload.amountZAR);
+      return [200, { success: true, balanceZAR: balance }];
+    } else {
+      agent.creditBalanceZAR += Number(payload.amountZAR);
+      await db.agents.upsert(agent);
+      return [200, { success: true, balanceZAR: agent.creditBalanceZAR }];
+    }
+  },
+
+  'GET /api/user/wishlist': async req => {
+    const userId = (req.headers['x-user-id'] as string) || 'user_shopper_01';
+    const items = await db.wishlists.listByUser(userId);
+    return [200, { count: items.length, wishlist: items }];
+  },
+
+  'POST /api/user/wishlist': async req => {
+    const payload = await parseJsonBody<{
+      userId?: string;
+      query: string;
+      category?: string;
+      targetMaxPriceZAR?: number;
+      autoBuy?: boolean;
+    }>(req);
+
+    if (!payload?.query) return [400, { error: 'INVALID_PAYLOAD', message: 'query is required for wishlist.' }];
+    const userId = payload.userId || 'user_shopper_01';
+    const item = await db.wishlists.add({
+      id: `wish_${Date.now()}_${randomBytes(4).toString('hex')}`,
+      userId,
+      query: payload.query.trim(),
+      category: payload.category,
+      targetMaxPriceZAR: Number(payload.targetMaxPriceZAR ?? 1000),
+      autoBuy: payload.autoBuy ?? true,
+      addedAt: Date.now(),
+      status: 'active'
+    });
+    return [201, { success: true, item }];
+  },
+
+  'DELETE /api/user/wishlist': async req => {
+    const id = req.headers['x-param-id'] as string;
+    if (!id) return [400, { error: 'MISSING_ID', message: 'Wishlist item ID is required.' }];
+    const removed = await db.wishlists.remove(id);
+    return [200, { success: removed }];
+  },
+
+  'POST /api/user/wishlist/toggle': async req => {
+    const id = req.headers['x-param-id'] as string;
+    if (!id) return [400, { error: 'MISSING_ID', message: 'Wishlist item ID is required.' }];
+    const list = await db.wishlists.listByUser('user_shopper_01');
+    const existing = list.find(w => w.id === id);
+    if (!existing) return [404, { error: 'NOT_FOUND', message: 'Wishlist item not found.' }];
+    const updated = await db.wishlists.update(id, { autoBuy: !existing.autoBuy });
+    return [200, { success: true, item: updated }];
+  },
+
+  // TRANSACTIONS & VOUCHERS APIS
+  'GET /api/transactions': async () => {
+    const list = await db.transactions.list();
+    return [200, { count: list.length, transactions: list }];
+  },
+
+  'GET /api/transactions/voucher': async req => {
+    const code = req.headers['x-param-code'] as string;
+    if (!code) return [400, { error: 'MISSING_VOUCHER_CODE', message: 'Voucher code is required.' }];
+    const receipt = await db.transactions.findByVoucherCode(code);
+    if (!receipt) return [404, { error: 'VOUCHER_NOT_FOUND', message: 'Voucher not found.' }];
+    return [200, receipt];
+  },
+
+  'POST /api/transactions/voucher/redeem': async req => {
+    const payload = await parseJsonBody<{ voucherCode?: string }>(req);
+    const code = payload?.voucherCode || (req.headers['x-param-code'] as string);
+    if (!code) return [400, { error: 'MISSING_VOUCHER_CODE', message: 'voucherCode is required.' }];
+    const receipt = await db.transactions.findByVoucherCode(code);
+    if (!receipt) return [404, { error: 'VOUCHER_NOT_FOUND', message: 'Voucher not found.' }];
+    receipt.status = 'REDEEMED';
+    await db.transactions.save(receipt);
+    return [200, { success: true, message: 'Voucher redeemed at store checkout.', receipt }];
   }
 };
 
@@ -728,8 +932,8 @@ const server = createServer(async (req, res) => {
     if (origin && ALLOWED_ORIGINS.has(origin)) {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-Agent-Protocol, X-Digital-Badge',
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Agent-Protocol, X-Digital-Badge, X-User-Id',
         'Vary': 'Origin'
       });
       res.end();
@@ -742,6 +946,7 @@ const server = createServer(async (req, res) => {
 
   let handler = ROUTES[key];
   if (!handler) {
+    // Dynamic Merchant routes
     const manualMatch = path.match(/^\/api\/merchants\/([^\/]+)\/manual-buy$/);
     if (req.method === 'POST' && manualMatch) {
       req.headers['x-param-store-id'] = manualMatch[1];
@@ -756,6 +961,47 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && autoMatch) {
       req.headers['x-param-store-id'] = autoMatch[1];
       handler = ROUTES['POST /api/merchants/autonomous-buy'];
+    }
+    const merchantDetailMatch = path.match(/^\/api\/merchants\/([^\/]+)$/);
+    if (req.method === 'GET' && merchantDetailMatch) {
+      req.headers['x-param-store-id'] = merchantDetailMatch[1];
+      handler = ROUTES['GET /api/merchants/detail'];
+    }
+
+    // Dynamic Mall routes
+    const mallStoresMatch = path.match(/^\/api\/malls\/([^\/]+)\/stores$/);
+    if (req.method === 'GET' && mallStoresMatch) {
+      req.headers['x-param-mall-id'] = mallStoresMatch[1];
+      handler = ROUTES['GET /api/malls/stores'];
+    }
+    const mallDetailMatch = path.match(/^\/api\/malls\/([^\/]+)$/);
+    if (req.method === 'GET' && mallDetailMatch) {
+      req.headers['x-param-mall-id'] = mallDetailMatch[1];
+      handler = ROUTES['GET /api/malls/detail'];
+    }
+
+    // Dynamic Wishlist routes
+    const wishlistToggleMatch = path.match(/^\/api\/user\/wishlist\/([^\/]+)\/toggle$/);
+    if (req.method === 'POST' && wishlistToggleMatch) {
+      req.headers['x-param-id'] = wishlistToggleMatch[1];
+      handler = ROUTES['POST /api/user/wishlist/toggle'];
+    }
+    const wishlistDeleteMatch = path.match(/^\/api\/user\/wishlist\/([^\/]+)$/);
+    if (req.method === 'DELETE' && wishlistDeleteMatch) {
+      req.headers['x-param-id'] = wishlistDeleteMatch[1];
+      handler = ROUTES['DELETE /api/user/wishlist'];
+    }
+
+    // Dynamic Transaction / Voucher routes
+    const voucherRedeemMatch = path.match(/^\/api\/transactions\/([^\/]+)\/redeem$/);
+    if (req.method === 'POST' && voucherRedeemMatch) {
+      req.headers['x-param-code'] = voucherRedeemMatch[1];
+      handler = ROUTES['POST /api/transactions/voucher/redeem'];
+    }
+    const voucherDetailMatch = path.match(/^\/api\/transactions\/([^\/]+)$/);
+    if (req.method === 'GET' && voucherDetailMatch) {
+      req.headers['x-param-code'] = voucherDetailMatch[1];
+      handler = ROUTES['GET /api/transactions/voucher'];
     }
   }
 
@@ -777,6 +1023,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`[metapase-server] listening on http://localhost:${PORT}`);
+server.listen(PORT, async () => {
+  const dbStatus = await initDatabase();
+  console.log(`[metapase-server] listening on http://localhost:${PORT} (Database: ${dbStatus.mode})`);
 });
