@@ -415,14 +415,15 @@ export class PersonalShoppingAgent {
 }
 
 // Direct execution CLI demonstration
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isDirectExecution = Boolean(process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('personalShoppingAgent.ts'));
+if (isDirectExecution) {
   const agent = new PersonalShoppingAgent();
   agent.executeAutonomousShoppingRun({
     intent: 'blazer jacket clothing',
     maxBudgetZAR: 1100,
     matchRadiusM: 50
   }).then(res => {
-    console.log('\n[PersonalAgent] Run finished:', JSON.stringify(res, null, 2));
+    console.log('\n[PersonalAgent] Run finished successfully!');
   }).catch(err => {
     console.error('[PersonalAgent] Error:', err);
   });

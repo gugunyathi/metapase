@@ -828,6 +828,28 @@ export default function App() {
         });
         addLog('META_PAY', `Added ${product.itemName} (${formatZAR(Math.round(product.stickerPriceZAR * product.floorRatio))}) to your cart.`, 'success');
       }}
+      onRecordPurchase={receipt => {
+        emitEvent({
+          type: 'paid',
+          snapshot: {
+            storeId: receipt.storeId,
+            campaignId: `promo_${receipt.sku}`,
+            sku: receipt.sku,
+            itemName: receipt.itemName,
+            outletName: receipt.storeName,
+            category: receipt.category ?? 'apparel',
+            stickerPriceZAR: receipt.amountZAR + (receipt.savingsZAR ?? 0),
+            imageUrl: receipt.imageUrl
+          },
+          priceZAR: receipt.amountZAR,
+          referenceId: receipt.voucherCode
+        });
+        addLog(
+          receipt.purchasedBy === 'autonomous_personal_agent' ? 'LLAMA_AGENT' : 'META_PAY',
+          `${receipt.purchasedBy === 'autonomous_personal_agent' ? '🤖 Autonomous Personal Agent bought' : '⚡ 1-Click manual buy:'} ${receipt.itemName} at ${receipt.storeName} for ${formatZAR(receipt.amountZAR)}. Voucher: ${receipt.voucherCode}`,
+          'success'
+        );
+      }}
       onNavigateHome={() => navigate('home')}
     />
   );

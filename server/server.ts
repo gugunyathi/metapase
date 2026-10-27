@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, createPublicKey, randomBytes, verify as verifySignature } from 'node:crypto';
+import { getAllMerchantAgents, getMerchantAgent } from '../agent/merchantAgents.js';
 
 type Category = 'apparel' | 'footwear' | 'groceries' | 'electronics' | 'beauty';
 
@@ -540,19 +541,195 @@ const ROUTES: Record<string, RouteHandler> = {
       campaignId: tokenEntry.campaignId,
       verified
     }];
+  },
+
+  'POST /api/agent/settle': async req => ROUTES['POST /api/pay/settle'](req),
+
+  'GET /api/health': async () => {
+    const agents = getAllMerchantAgents();
+    return [200, {
+      status: 'ONLINE',
+      engine: 'Metapase Multi-Agent Engine',
+      protocol: 'Personal Agent Protocol 1.0 (Meta / Shopify / Stripe / Sierra / Walmart)',
+      activeMerchantsCount: agents.length,
+      timestamp: new Date().toISOString()
+    }];
+  },
+
+  'GET /api/merchants': async () => {
+    const agents = getAllMerchantAgents();
+    return [200, {
+      count: agents.length,
+      merchants: agents.map(a => ({
+        storeId: a.storeId,
+        storeName: a.storeName,
+        mallId: a.mallId,
+        mallName: a.mallName,
+        category: a.category,
+        protocolVersion: a.protocolVersion,
+        policy: a.policy,
+        catalogCount: a.getCatalog().length,
+        catalog: a.getCatalog().map(c => ({
+          sku: c.sku,
+          itemName: c.itemName,
+          stickerPriceZAR: c.stickerPriceZAR,
+          floorPriceZAR: Math.round(c.stickerPriceZAR * (c.floorRatio ?? a.policy.minFloorRatio)),
+          imageUrl: c.imageUrl
+        }))
+      }))
+    }];
+  },
+
+  'POST /api/merchants/bargain': async req => {
+    const payload = await parseJsonBody<{
+      storeId?: string;
+      sessionId?: string;
+      sku?: string;
+      offerZAR?: number;
+      rationale?: string;
+    }>(req);
+
+    const storeId = payload?.storeId || (req.headers['x-param-store-id'] as string);
+    if (!storeId || !payload?.sku || !payload?.offerZAR || !payload?.sessionId) {
+      return [400, { error: 'INVALID_PAYLOAD', message: 'storeId, sku, offerZAR, and sessionId are required.' }];
+    }
+
+    const agent = getMerchantAgent(storeId);
+    if (!agent) {
+      return [404, { error: 'MERCHANT_NOT_FOUND', message: `No Meta Merchant Agent registered for storeId: ${storeId}` }];
+    }
+
+    const evalResult = agent.evaluateAutonomousOffer({
+      sessionId: payload.sessionId,
+      sku: payload.sku,
+      offerZAR: Number(payload.offerZAR),
+      buyerRationale: payload.rationale
+    });
+
+    if (evalResult.status === 'ACCEPTED' && evalResult.transactionToken) {
+      TOKENS.set(evalResult.transactionToken, {
+        campaignId: `promo_${payload.sku}`,
+        priceZAR: evalResult.finalPriceZAR,
+        expiresAt: evalResult.expiresAt ?? (Date.now() + TOKEN_TTL_MS)
+      });
+    }
+
+    return [200, evalResult];
+  },
+
+  'POST /api/merchants/autonomous-buy': async req => {
+    const payload = await parseJsonBody<{
+      storeId?: string;
+      sku?: string;
+      maxBudgetZAR?: number;
+      virtualCard?: {
+        cardId?: string;
+        last4?: string;
+        authorizationId?: string;
+      };
+    }>(req);
+
+    const storeId = payload?.storeId || (req.headers['x-param-store-id'] as string);
+    if (!storeId || !payload?.sku || !payload?.maxBudgetZAR) {
+      return [400, { error: 'INVALID_PAYLOAD', message: 'storeId, sku, and maxBudgetZAR are required.' }];
+    }
+
+    const agent = getMerchantAgent(storeId);
+    if (!agent) {
+      return [404, { error: 'MERCHANT_NOT_FOUND', message: `No Meta Merchant Agent for store: ${storeId}` }];
+    }
+
+    // Step 1: Automated bargaining
+    const sessionId = `auto_sess_${randomBytes(8).toString('hex')}`;
+    let offer = Math.round(payload.maxBudgetZAR * 0.78);
+    let evaluation = agent.evaluateAutonomousOffer({
+      sessionId,
+      sku: payload.sku,
+      offerZAR: offer,
+      buyerRationale: 'Personal Shopping Agent autonomous proximity purchase.'
+    });
+
+    let round = 1;
+    while (evaluation.status === 'COUNTER_PROPOSED' && round < 5) {
+      offer = Math.min(payload.maxBudgetZAR, evaluation.finalPriceZAR);
+      evaluation = agent.evaluateAutonomousOffer({
+        sessionId,
+        sku: payload.sku,
+        offerZAR: offer,
+        buyerRationale: 'Accepting merchant counter within budget ceiling.'
+      });
+      round++;
+    }
+
+    if (evaluation.status !== 'ACCEPTED' || !evaluation.transactionToken) {
+      return [422, {
+        success: false,
+        error: 'DEAL_NOT_REACHED',
+        message: evaluation.message,
+        lastPriceZAR: evaluation.finalPriceZAR
+      }];
+    }
+
+    // Step 2: Settle autonomous order
+    const receipt = agent.settleAutonomousOrder({
+      transactionToken: evaluation.transactionToken,
+      cardId: payload.virtualCard?.cardId ?? `ic_auto_${randomBytes(6).toString('hex')}`,
+      last4: payload.virtualCard?.last4 ?? '8821',
+      authorizationId: payload.virtualCard?.authorizationId ?? `AUTH_${randomBytes(6).toString('hex').toUpperCase()}`
+    });
+
+    return [200, {
+      success: true,
+      mode: 'autonomous_personal_agent',
+      receipt,
+      roundsCompleted: round,
+      agreedPriceZAR: evaluation.finalPriceZAR
+    }];
+  },
+
+  'POST /api/merchants/manual-buy': async req => {
+    const payload = await parseJsonBody<{
+      storeId?: string;
+      sku?: string;
+      priceZAR?: number;
+      paymentMethod?: string;
+    }>(req);
+
+    const storeId = payload?.storeId || (req.headers['x-param-store-id'] as string);
+    if (!storeId || !payload?.sku) {
+      return [400, { error: 'INVALID_PAYLOAD', message: 'storeId and sku are required for manual buy.' }];
+    }
+
+    const agent = getMerchantAgent(storeId);
+    if (!agent) {
+      return [404, { error: 'MERCHANT_NOT_FOUND', message: `No Meta Merchant Agent registered for storeId: ${storeId}` }];
+    }
+
+    const receipt = agent.executeManualPurchase({
+      sku: payload.sku,
+      userPriceZAR: payload.priceZAR,
+      paymentMethod: payload.paymentMethod ?? '1click_card'
+    });
+
+    return [200, {
+      success: true,
+      mode: 'manual_user_checkout',
+      receipt
+    }];
   }
 };
 
 const server = createServer(async (req, res) => {
   const origin = req.headers.origin;
-  const key = `${req.method} ${req.url?.split('?')[0]}`;
+  const path = req.url?.split('?')[0] ?? '';
+  const key = `${req.method} ${path}`;
 
   if (req.method === 'OPTIONS') {
     if (origin && ALLOWED_ORIGINS.has(origin)) {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Agent-Protocol, X-Digital-Badge',
         'Vary': 'Origin'
       });
       res.end();
@@ -563,7 +740,25 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const handler = ROUTES[key];
+  let handler = ROUTES[key];
+  if (!handler) {
+    const manualMatch = path.match(/^\/api\/merchants\/([^\/]+)\/manual-buy$/);
+    if (req.method === 'POST' && manualMatch) {
+      req.headers['x-param-store-id'] = manualMatch[1];
+      handler = ROUTES['POST /api/merchants/manual-buy'];
+    }
+    const bargainMatch = path.match(/^\/api\/merchants\/([^\/]+)\/bargain$/);
+    if (req.method === 'POST' && bargainMatch) {
+      req.headers['x-param-store-id'] = bargainMatch[1];
+      handler = ROUTES['POST /api/merchants/bargain'];
+    }
+    const autoMatch = path.match(/^\/api\/merchants\/([^\/]+)\/autonomous-buy$/);
+    if (req.method === 'POST' && autoMatch) {
+      req.headers['x-param-store-id'] = autoMatch[1];
+      handler = ROUTES['POST /api/merchants/autonomous-buy'];
+    }
+  }
+
   if (!handler) {
     sendJson(res, 404, { error: 'NOT_FOUND', message: `Route ${key} not found.` }, origin);
     return;
