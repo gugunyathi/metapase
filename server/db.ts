@@ -67,6 +67,47 @@ export interface DbTransactionReceipt {
   authorizationRef: string;
   qrPayload: string;
   status: 'ISSUED' | 'REDEEMED' | 'EXPIRED';
+  financing?: {
+    isFinanced: boolean;
+    planId: string;
+    walletUsedZAR: number;
+    financedAmountZAR: number;
+    monthlyInstallmentZAR: number;
+    termMonths: 12;
+  };
+}
+
+export interface DbInstallmentScheduleItem {
+  month: number;
+  dueDate: string;
+  amountZAR: number;
+  status: 'PAID' | 'PENDING';
+  paidAt?: string;
+}
+
+export interface DbInstallmentPlan {
+  planId: string;
+  userId: string;
+  storeId: string;
+  storeName: string;
+  mallName: string;
+  sku: string;
+  itemName: string;
+  totalPurchaseZAR: number;
+  walletContributionZAR: number;
+  financedAmountZAR: number;
+  remainingBalanceZAR: number;
+  monthlyInstallmentZAR: number;
+  termMonths: 12;
+  monthsPaid: number;
+  aprPercent: 0;
+  status: 'ACTIVE' | 'PAID_OFF';
+  voucherCode: string;
+  startDate: string;
+  nextDueDate: string;
+  schedule: DbInstallmentScheduleItem[];
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface DbNegotiationSession {
@@ -135,6 +176,7 @@ class InMemoryDb {
   public negotiations = new Map<string, DbNegotiationSession>();
   public stores = new Map<string, DbMerchantStore>();
   public inventory = new Map<string, DbProductInventory>();
+  public creditPlans = new Map<string, DbInstallmentPlan>();
   public activities: DbActivityLog[] = [];
 
   constructor() {
@@ -326,6 +368,47 @@ class InMemoryDb {
         updatedAt: Date.now()
       });
     }
+
+    // Seed default 12-month Point-of-Sale Auto-Financing plan
+    const seedSchedule: DbInstallmentScheduleItem[] = [];
+    const now = Date.now();
+    const monthlyAmt = 83.25; // R999 financed over 12 months at 0% APR
+    for (let m = 1; m <= 12; m++) {
+      const isPaid = m <= 2;
+      seedSchedule.push({
+        month: m,
+        dueDate: new Date(now + (m - 2) * 30 * 86400000).toISOString().split('T')[0],
+        amountZAR: monthlyAmt,
+        status: isPaid ? 'PAID' : 'PENDING',
+        paidAt: isPaid ? new Date(now - (3 - m) * 30 * 86400000).toISOString() : undefined
+      });
+    }
+
+    const initialPlan: DbInstallmentPlan = {
+      planId: 'plan_pos_auto_001',
+      userId: defaultUser.userId,
+      storeId: 'fw_nike',
+      storeName: 'Nike Fourways',
+      mallName: 'Fourways Mall',
+      sku: 'NK-PEG-0041',
+      itemName: 'Nike Air Zoom Pegasus 41',
+      totalPurchaseZAR: 1999,
+      walletContributionZAR: 1000,
+      financedAmountZAR: 999,
+      remainingBalanceZAR: Math.round((999 - (monthlyAmt * 2)) * 100) / 100,
+      monthlyInstallmentZAR: monthlyAmt,
+      termMonths: 12,
+      monthsPaid: 2,
+      aprPercent: 0,
+      status: 'ACTIVE',
+      voucherCode: 'MP-VOUCHER-NK-PEG-0041-M2',
+      startDate: new Date(now - 60 * 86400000).toISOString(),
+      nextDueDate: new Date(now + 30 * 86400000).toISOString().split('T')[0],
+      schedule: seedSchedule,
+      createdAt: now - 60 * 86400000,
+      updatedAt: now
+    };
+    this.creditPlans.set(initialPlan.planId, initialPlan);
   }
 }
 
@@ -359,6 +442,8 @@ export async function initDatabase(): Promise<{ mode: 'mongodb' | 'in_memory'; d
       await mongoDb.collection('inventory').createIndex({ sku: 1 }, { unique: true });
       await mongoDb.collection('inventory').createIndex({ storeId: 1 });
       await mongoDb.collection('activities').createIndex({ timestamp: -1 });
+      await mongoDb.collection('credit_plans').createIndex({ planId: 1 }, { unique: true });
+      await mongoDb.collection('credit_plans').createIndex({ userId: 1 });
 
       // Seed stores and inventory if empty
       const storeCount = await mongoDb.collection('stores').countDocuments();
@@ -682,6 +767,83 @@ export const db = {
           return true;
         })
         .slice(0, limit);
+    }
+  },
+
+  // POINT OF SALE AUTO-FINANCING & 12-MONTH INSTALLMENT PLANS
+  creditPlans: {
+    async listByUser(userId: string): Promise<DbInstallmentPlan[]> {
+      if (isConnected && mongoDb) {
+        return (await mongoDb.collection('credit_plans').find({ userId }).sort({ createdAt: -1 }).toArray()) as DbInstallmentPlan[];
+      }
+      return Array.from(inMemoryDb.creditPlans.values())
+        .filter(p => p.userId === userId)
+        .sort((a, b) => b.createdAt - a.createdAt);
+    },
+    async findById(planId: string): Promise<DbInstallmentPlan | null> {
+      if (isConnected && mongoDb) {
+        return (await mongoDb.collection('credit_plans').findOne({ planId })) as DbInstallmentPlan | null;
+      }
+      return inMemoryDb.creditPlans.get(planId) ?? null;
+    },
+    async create(plan: DbInstallmentPlan): Promise<DbInstallmentPlan> {
+      if (isConnected && mongoDb) {
+        await mongoDb.collection('credit_plans').insertOne(plan);
+      }
+      inMemoryDb.creditPlans.set(plan.planId, plan);
+      return plan;
+    },
+    async payInstallment(planId: string): Promise<{ success: boolean; plan: DbInstallmentPlan | null; message: string }> {
+      const plan = inMemoryDb.creditPlans.get(planId) ?? (isConnected && mongoDb ? ((await mongoDb.collection('credit_plans').findOne({ planId })) as DbInstallmentPlan | null) : null);
+      if (!plan) return { success: false, plan: null, message: 'Plan not found' };
+      if (plan.status === 'PAID_OFF' || plan.monthsPaid >= plan.termMonths) {
+        return { success: false, plan, message: 'Plan is already fully paid off' };
+      }
+
+      plan.monthsPaid += 1;
+      plan.remainingBalanceZAR = Math.max(0, Math.round((plan.remainingBalanceZAR - plan.monthlyInstallmentZAR) * 100) / 100);
+      if (plan.monthsPaid >= plan.termMonths || plan.remainingBalanceZAR <= 0) {
+        plan.status = 'PAID_OFF';
+        plan.remainingBalanceZAR = 0;
+      }
+
+      // Update schedule item
+      const nextPending = plan.schedule.find(s => s.status === 'PENDING');
+      if (nextPending) {
+        nextPending.status = 'PAID';
+        nextPending.paidAt = new Date().toISOString();
+      }
+
+      const nextItem = plan.schedule.find(s => s.status === 'PENDING');
+      if (nextItem) {
+        plan.nextDueDate = nextItem.dueDate;
+      }
+
+      plan.updatedAt = Date.now();
+
+      if (isConnected && mongoDb) {
+        await mongoDb.collection('credit_plans').updateOne({ planId }, { $set: plan });
+      }
+      inMemoryDb.creditPlans.set(planId, plan);
+      return { success: true, plan, message: `Installment ${plan.monthsPaid}/12 paid successfully` };
+    },
+    async getSummary(userId: string) {
+      const plans = await this.listByUser(userId);
+      const CREDIT_LIMIT_ZAR = 25000;
+      const totalFinancedZAR = plans.reduce((acc, p) => acc + p.financedAmountZAR, 0);
+      const remainingDebtZAR = plans.filter(p => p.status === 'ACTIVE').reduce((acc, p) => acc + p.remainingBalanceZAR, 0);
+      const availableCreditZAR = Math.max(0, CREDIT_LIMIT_ZAR - remainingDebtZAR);
+      const activePlansCount = plans.filter(p => p.status === 'ACTIVE').length;
+
+      return {
+        userId,
+        creditLimitZAR: CREDIT_LIMIT_ZAR,
+        totalFinancedZAR,
+        remainingDebtZAR: Math.round(remainingDebtZAR * 100) / 100,
+        availableCreditZAR: Math.round(availableCreditZAR * 100) / 100,
+        activePlansCount,
+        plans
+      };
     }
   }
 };

@@ -789,11 +789,88 @@ const ROUTES: Record<string, RouteHandler> = {
     const buyerUserId = payload?.userId || (req.headers['x-user-id'] as string) || 'user_shopper_01';
     receipt.userId = buyerUserId;
 
-    // Save transaction to database, deduct promo credit, decrement product stock
+    // Check Point of Sale Auto-Financing:
+    // If user agent credit balance is less than required, grant auto-credit over 12 monthly installments
+    let agentRecord = await db.agents.findByUserId(buyerUserId);
+    const availableBalance = agentRecord?.creditBalanceZAR ?? 1000;
+    const finalCost = evaluation.finalPriceZAR;
+
+    if (availableBalance < finalCost) {
+      const deficitZAR = Math.round((finalCost - availableBalance) * 100) / 100;
+      const monthlyInstallment = Math.round((deficitZAR / 12) * 100) / 100;
+      const planId = `plan_auto_${Date.now()}_${randomBytes(4).toString('hex')}`;
+
+      // Build 12-month installment schedule
+      const now = Date.now();
+      const schedule = Array.from({ length: 12 }, (_, i) => ({
+        month: i + 1,
+        dueDate: new Date(now + (i + 1) * 30 * 86400000).toISOString().split('T')[0],
+        amountZAR: monthlyInstallment,
+        status: 'PENDING' as const
+      }));
+
+      const newPlan = await db.creditPlans.create({
+        planId,
+        userId: buyerUserId,
+        storeId: agent.storeId,
+        storeName: agent.storeName,
+        mallName: agent.mallName,
+        sku: receipt.sku,
+        itemName: receipt.itemName,
+        totalPurchaseZAR: finalCost,
+        walletContributionZAR: availableBalance,
+        financedAmountZAR: deficitZAR,
+        remainingBalanceZAR: deficitZAR,
+        monthlyInstallmentZAR: monthlyInstallment,
+        termMonths: 12,
+        monthsPaid: 0,
+        aprPercent: 0,
+        status: 'ACTIVE',
+        voucherCode: receipt.voucherCode,
+        startDate: new Date().toISOString(),
+        nextDueDate: schedule[0].dueDate,
+        schedule,
+        createdAt: now,
+        updatedAt: now
+      });
+
+      // Deduct available balance
+      if (agentRecord) {
+        await db.agents.deductCredit(agentRecord.agentId, availableBalance);
+      }
+
+      receipt.financing = {
+        isFinanced: true,
+        planId: newPlan.planId,
+        walletUsedZAR: availableBalance,
+        financedAmountZAR: deficitZAR,
+        monthlyInstallmentZAR: monthlyInstallment,
+        termMonths: 12
+      };
+
+      try {
+        await db.activities.log({
+          type: 'CREDIT_ADJUSTMENT',
+          actor: 'SYSTEM',
+          userId: buyerUserId,
+          storeId: agent.storeId,
+          storeName: agent.storeName,
+          mallId: agent.mallId,
+          summary: `Point of Sale Auto-Financing Granted: R${deficitZAR} financed over 12 months (R${monthlyInstallment}/mo) for ${receipt.itemName}`,
+          details: { planId, financedAmountZAR: deficitZAR, monthlyInstallmentZAR: monthlyInstallment, termMonths: 12 }
+        });
+      } catch {}
+    } else {
+      // Sufficient balance in wallet
+      try {
+        await db.agents.deductCredit(agentRecord ? agentRecord.agentId : 'agent_personal_shopper_01', finalCost);
+      } catch {}
+    }
+
+    // Save transaction to database and decrement product stock
     await db.transactions.save(receipt);
     try {
       await db.inventory.decrementStock(payload.sku, 1);
-      await db.agents.deductCredit('agent_personal_shopper_01', evaluation.finalPriceZAR);
     } catch {}
 
     // Log real-time activity to database
@@ -805,7 +882,7 @@ const ROUTES: Record<string, RouteHandler> = {
         storeId: agent.storeId,
         storeName: agent.storeName,
         mallId: agent.mallId,
-        summary: `Autonomous purchase: ${receipt.itemName} at ${agent.storeName} for R${receipt.amountZAR} (Saved R${receipt.savingsZAR})`,
+        summary: `Autonomous purchase: ${receipt.itemName} at ${agent.storeName} for R${receipt.amountZAR} (Saved R${receipt.savingsZAR})${receipt.financing ? ' [12-Mo POS Financed]' : ''}`,
         details: {
           receiptId: receipt.receiptId,
           voucherCode: receipt.voucherCode,
@@ -814,7 +891,8 @@ const ROUTES: Record<string, RouteHandler> = {
           finalPriceZAR: receipt.amountZAR,
           savingsZAR: receipt.savingsZAR,
           roundsCompleted: round,
-          cardLast4: '8821'
+          cardLast4: '8821',
+          financing: receipt.financing
         }
       });
     } catch {}
@@ -824,7 +902,8 @@ const ROUTES: Record<string, RouteHandler> = {
       mode: 'autonomous_personal_agent',
       receipt,
       roundsCompleted: round,
-      agreedPriceZAR: evaluation.finalPriceZAR
+      agreedPriceZAR: evaluation.finalPriceZAR,
+      financing: receipt.financing
     }];
   },
 
@@ -856,6 +935,80 @@ const ROUTES: Record<string, RouteHandler> = {
     const buyerUserId = payload?.userId || (req.headers['x-user-id'] as string) || 'user_shopper_01';
     receipt.userId = buyerUserId;
 
+    // Point of Sale Auto-Financing for Manual 1-Click Buy
+    let agentRecord = await db.agents.findByUserId(buyerUserId);
+    const availableBalance = agentRecord?.creditBalanceZAR ?? 1000;
+    const finalCost = receipt.amountZAR;
+
+    if (availableBalance < finalCost) {
+      const deficitZAR = Math.round((finalCost - availableBalance) * 100) / 100;
+      const monthlyInstallment = Math.round((deficitZAR / 12) * 100) / 100;
+      const planId = `plan_manual_${Date.now()}_${randomBytes(4).toString('hex')}`;
+
+      const now = Date.now();
+      const schedule = Array.from({ length: 12 }, (_, i) => ({
+        month: i + 1,
+        dueDate: new Date(now + (i + 1) * 30 * 86400000).toISOString().split('T')[0],
+        amountZAR: monthlyInstallment,
+        status: 'PENDING' as const
+      }));
+
+      const newPlan = await db.creditPlans.create({
+        planId,
+        userId: buyerUserId,
+        storeId: agent.storeId,
+        storeName: agent.storeName,
+        mallName: agent.mallName,
+        sku: receipt.sku,
+        itemName: receipt.itemName,
+        totalPurchaseZAR: finalCost,
+        walletContributionZAR: availableBalance,
+        financedAmountZAR: deficitZAR,
+        remainingBalanceZAR: deficitZAR,
+        monthlyInstallmentZAR: monthlyInstallment,
+        termMonths: 12,
+        monthsPaid: 0,
+        aprPercent: 0,
+        status: 'ACTIVE',
+        voucherCode: receipt.voucherCode,
+        startDate: new Date().toISOString(),
+        nextDueDate: schedule[0].dueDate,
+        schedule,
+        createdAt: now,
+        updatedAt: now
+      });
+
+      if (agentRecord) {
+        await db.agents.deductCredit(agentRecord.agentId, availableBalance);
+      }
+
+      receipt.financing = {
+        isFinanced: true,
+        planId: newPlan.planId,
+        walletUsedZAR: availableBalance,
+        financedAmountZAR: deficitZAR,
+        monthlyInstallmentZAR: monthlyInstallment,
+        termMonths: 12
+      };
+
+      try {
+        await db.activities.log({
+          type: 'CREDIT_ADJUSTMENT',
+          actor: 'SYSTEM',
+          userId: buyerUserId,
+          storeId: agent.storeId,
+          storeName: agent.storeName,
+          mallId: agent.mallId,
+          summary: `Point of Sale Auto-Financing Granted: R${deficitZAR} financed over 12 months (R${monthlyInstallment}/mo) for ${receipt.itemName}`,
+          details: { planId, financedAmountZAR: deficitZAR, monthlyInstallmentZAR: monthlyInstallment, termMonths: 12 }
+        });
+      } catch {}
+    } else {
+      try {
+        await db.agents.deductCredit(agentRecord ? agentRecord.agentId : 'agent_personal_shopper_01', finalCost);
+      } catch {}
+    }
+
     // Save transaction receipt to database and decrement stock
     await db.transactions.save(receipt);
     try {
@@ -871,13 +1024,14 @@ const ROUTES: Record<string, RouteHandler> = {
         storeId: agent.storeId,
         storeName: agent.storeName,
         mallId: agent.mallId,
-        summary: `Manual 1-click checkout: ${receipt.itemName} at ${agent.storeName} for R${receipt.amountZAR}`,
+        summary: `Manual 1-click checkout: ${receipt.itemName} at ${agent.storeName} for R${receipt.amountZAR}${receipt.financing ? ' [12-Mo POS Financed]' : ''}`,
         details: {
           receiptId: receipt.receiptId,
           voucherCode: receipt.voucherCode,
           sku: receipt.sku,
           amountZAR: receipt.amountZAR,
-          savingsZAR: receipt.savingsZAR
+          savingsZAR: receipt.savingsZAR,
+          financing: receipt.financing
         }
       });
     } catch {}
@@ -885,7 +1039,8 @@ const ROUTES: Record<string, RouteHandler> = {
     return [200, {
       success: true,
       mode: 'manual_user_checkout',
-      receipt
+      receipt,
+      financing: receipt.financing
     }];
   },
 
@@ -970,6 +1125,38 @@ const ROUTES: Record<string, RouteHandler> = {
     if (!existing) return [404, { error: 'NOT_FOUND', message: 'Wishlist item not found.' }];
     const updated = await db.wishlists.update(id, { autoBuy: !existing.autoBuy });
     return [200, { success: true, item: updated }];
+  // POINT OF SALE AUTO-FINANCING & 12-MONTH INSTALLMENT PLANS
+  'GET /api/user/credit-plans': async req => {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const userId = url.searchParams.get('userId') || (req.headers['x-user-id'] as string) || 'user_shopper_01';
+    const summary = await db.creditPlans.getSummary(userId);
+    return [200, { ok: true, ...summary }];
+  },
+
+  'POST /api/user/credit-plans/pay': async req => {
+    const planId = req.headers['x-param-plan-id'] as string;
+    const payload = await parseJsonBody<{ planId?: string }>(req);
+    const targetPlanId = planId || payload?.planId;
+    if (!targetPlanId) return [400, { error: 'MISSING_PLAN_ID', message: 'planId is required.' }];
+
+    const result = await db.creditPlans.payInstallment(targetPlanId);
+    if (!result.success || !result.plan) {
+      return [400, { error: 'PAYMENT_FAILED', message: result.message }];
+    }
+
+    try {
+      await db.activities.log({
+        type: 'CREDIT_ADJUSTMENT',
+        actor: 'USER',
+        userId: result.plan.userId,
+        storeId: result.plan.storeId,
+        storeName: result.plan.storeName,
+        summary: `Installment ${result.plan.monthsPaid}/12 paid for ${result.plan.itemName} (R${result.plan.monthlyInstallmentZAR}) - Remaining: R${result.plan.remainingBalanceZAR}`,
+        details: { planId: result.plan.planId, monthsPaid: result.plan.monthsPaid, remainingBalanceZAR: result.plan.remainingBalanceZAR }
+      });
+    } catch {}
+
+    return [200, { ok: true, message: result.message, plan: result.plan }];
   },
 
   // TRANSACTIONS & VOUCHERS APIS
@@ -1183,6 +1370,13 @@ const server = createServer(async (req, res) => {
     if (req.method === 'DELETE' && wishlistDeleteMatch) {
       req.headers['x-param-id'] = wishlistDeleteMatch[1];
       handler = ROUTES['DELETE /api/user/wishlist'];
+    }
+
+    // Dynamic Credit Plan routes
+    const creditPlanPayMatch = path.match(/^\/api\/user\/credit-plans\/([^\/]+)\/pay$/);
+    if (req.method === 'POST' && creditPlanPayMatch) {
+      req.headers['x-param-plan-id'] = creditPlanPayMatch[1];
+      handler = ROUTES['POST /api/user/credit-plans/pay'];
     }
 
     // Dynamic Transaction / Voucher routes

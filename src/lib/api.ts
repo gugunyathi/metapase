@@ -163,6 +163,50 @@ export interface ApiActivityLog {
   details: Record<string, unknown>;
 }
 
+export interface ApiInstallmentScheduleItem {
+  month: number;
+  dueDate: string;
+  amountZAR: number;
+  status: 'PAID' | 'PENDING';
+  paidAt?: string;
+}
+
+export interface ApiInstallmentPlan {
+  planId: string;
+  userId: string;
+  storeId: string;
+  storeName: string;
+  mallName: string;
+  sku: string;
+  itemName: string;
+  totalPurchaseZAR: number;
+  walletContributionZAR: number;
+  financedAmountZAR: number;
+  remainingBalanceZAR: number;
+  monthlyInstallmentZAR: number;
+  termMonths: 12;
+  monthsPaid: number;
+  aprPercent: 0;
+  status: 'ACTIVE' | 'PAID_OFF';
+  voucherCode: string;
+  startDate: string;
+  nextDueDate: string;
+  schedule: ApiInstallmentScheduleItem[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ApiCreditSummary {
+  ok: boolean;
+  userId: string;
+  creditLimitZAR: number;
+  totalFinancedZAR: number;
+  remainingDebtZAR: number;
+  availableCreditZAR: number;
+  activePlansCount: number;
+  plans: ApiInstallmentPlan[];
+}
+
 export interface ApiTransactionReceipt {
   receiptId: string;
   voucherCode: string;
@@ -180,6 +224,14 @@ export interface ApiTransactionReceipt {
   qrPayload: string;
   status: 'ISSUED' | 'REDEEMED' | 'EXPIRED';
   userId?: string;
+  financing?: {
+    isFinanced: boolean;
+    planId: string;
+    walletUsedZAR: number;
+    financedAmountZAR: number;
+    monthlyInstallmentZAR: number;
+    termMonths: 12;
+  };
 }
 
 const getJson = async <T>(path: string): Promise<T | null> => {
@@ -260,5 +312,11 @@ export const api = {
     if (filters?.limit) params.set('limit', String(filters.limit));
     const queryStr = params.toString() ? `?${params.toString()}` : '';
     return getJson<{ count: number; activities: ApiActivityLog[] }>(`/api/activity${queryStr}`);
-  }
+  },
+
+  // Point of Sale Auto-Financing & 12-Month Installment Plans
+  getCreditPlans: (userId = 'user_shopper_01') =>
+    getJson<ApiCreditSummary>(`/api/user/credit-plans?userId=${encodeURIComponent(userId)}`),
+  payInstallment: (planId: string) =>
+    postJson<{ ok: boolean; message: string; plan: ApiInstallmentPlan }>(`/api/user/credit-plans/${planId}/pay`, {})
 };
