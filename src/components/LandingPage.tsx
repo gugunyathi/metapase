@@ -1,0 +1,1069 @@
+import { useState, lazy, Suspense } from "react";
+import heroStoreImage from "@/assets/images/hero_autonomous_store_1790899130361.jpg";
+import { type PasskeyUser, signOutPasskey } from "@/lib/passkey-auth";
+import { AutoComLogo } from "@/components/AutoComLogo";
+import { PWAInstallButton } from "@/components/PWAInstallButton";
+import MallSimulator from "@/components/MallSimulator";
+import { MonetizationMatrix } from "@/components/home/MonetizationMatrix";
+
+const PitchDeckModal = lazy(() =>
+  import("@/components/PitchDeckModal").then((m) => ({ default: m.PitchDeckModal })),
+);
+import { AdLibraryView } from "@/components/adserver/AdLibraryView";
+import type {
+  Web3WalletState,
+  AgentApiCredential,
+  ArbitrageLedgerEntry,
+  ShopifyIntegrationConfig,
+  PriceElasticityPoint,
+  SyndicatedCampaign,
+  AttentionBiddingPool,
+  SpatialAdCampaign,
+  ChainNetwork,
+} from "@/types/autocom";
+import {
+  Download,
+  FileText,
+  Sparkles,
+  CheckCircle2,
+  Store,
+  Database,
+  CreditCard,
+  ShoppingBag,
+  Wallet,
+  Zap,
+  Radio,
+  Layers,
+  ArrowRight,
+  Terminal,
+  Menu,
+} from "lucide-react";
+
+interface LandingPageProps {
+  currentUser: PasskeyUser | null;
+  onOpenPasskeyModal: (mode: "signin" | "signup") => void;
+  onLaunchLiveMesh: () => void;
+  onOpenWalkthrough: () => void;
+  onSignOut: () => void;
+  onOpenMerchantDashboard?: () => void;
+  onOpenOpenAdLibrary?: () => void;
+  onOpenAutoWallet?: () => void;
+  onOpenMarketplace?: () => void;
+  onOpenWeb3Wallet?: () => void;
+  onOpenBitchat?: () => void;
+  onOpenAgentPortal?: () => void;
+  onOpenPayPalHackathon?: () => void;
+  onOpenAgentNames?: () => void;
+  onOpenOwnersDirectory?: () => void;
+  onOpenLeaderboard?: () => void;
+  onOpenCreateAgent?: () => void;
+  walletUsdcBalance?: number;
+  activeChain?: string;
+  // Commercialization Engine & Ad Library Props
+  walletState?: Web3WalletState;
+  apiCredentials?: AgentApiCredential[];
+  arbitrageLedger?: ArbitrageLedgerEntry[];
+  shopifyIntegration?: ShopifyIntegrationConfig;
+  priceElasticityCurve?: PriceElasticityPoint[];
+  syndicatedCampaigns?: SyndicatedCampaign[];
+  attentionPools?: AttentionBiddingPool[];
+  campaigns?: SpatialAdCampaign[];
+  onGenerateApiKey?: (tier?: "DEVELOPER_SANDBOX" | "ENTERPRISE_QUANTUM") => AgentApiCredential;
+  onRecordArbitrageSavings?: (params: {
+    agentId: string;
+    merchantStore: string;
+    dealItem: string;
+    originalPriceZar: number;
+    negotiatedPriceZar: number;
+    settlementChain?: ChainNetwork;
+  }) => ArbitrageLedgerEntry;
+  onRunElasticitySimulation?: (params: {
+    targetProduct: string;
+    simulatedAgentCount: number;
+    minDiscount: number;
+    maxDiscount: number;
+  }) => PriceElasticityPoint[];
+  onClaimAffiliatePayout?: (campaignId: string) => number;
+  onUpdateAttentionBidPool?: (
+    poolId: string,
+    maxBidUsdc: number,
+    additionalBudgetUsdc: number,
+  ) => void;
+  onSponsorStorage?: (campaignId: string, amountUsdc: number) => void;
+  onUploadCampaign?: (
+    campaign: Omit<
+      SpatialAdCampaign,
+      | "id"
+      | "impressionsCount"
+      | "agentConversionsCount"
+      | "instantAutoBagCount"
+      | "spentAttentionUsdc"
+    >,
+  ) => void;
+}
+
+export function LandingPage({
+  currentUser,
+  onOpenPasskeyModal,
+  onLaunchLiveMesh,
+  onOpenWalkthrough,
+  onSignOut,
+  onOpenMerchantDashboard,
+  onOpenOpenAdLibrary,
+  onOpenAutoWallet,
+  onOpenMarketplace,
+  onOpenWeb3Wallet,
+  onOpenBitchat,
+  onOpenAgentPortal,
+  onOpenPayPalHackathon,
+  onOpenAgentNames,
+  onOpenOwnersDirectory,
+  onOpenLeaderboard,
+  onOpenCreateAgent,
+  walletUsdcBalance = 285.5,
+  activeChain = "base",
+  walletState = {
+    address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    chainId: 8453,
+    network: "base",
+    balances: { USDC: 285.5, ERC_X402: 1420.0, ZAR: 3450.0 },
+    isConnected: true,
+    isConnecting: false,
+    transactions: [],
+  },
+  apiCredentials = [],
+  arbitrageLedger = [],
+  shopifyIntegration = {
+    shopUrl: "https://sandton-retail-flagship.myshopify.com",
+    accessToken: "shpat_98fa7210b38c29188eaf",
+    merchantName: "Sandton Retail Flagship",
+    tier: "DYNAMIC_ENGINE",
+    isConnected: true,
+    lastSyncTimestamp: 1740000000000,
+    syncedInventoryCount: 42,
+    maxInventoryLimit: "unlimited",
+    syntheticAgentPassesMonthly: 18450,
+    maxPassesMonthly: 50000,
+    autoPriceElasticityReports: true,
+    spatialFloorMapping: {
+      mallName: "Sandton City Mall",
+      storeNodeId: "node-zara-s1",
+      corridorAnchor: "Level 1 North Passage",
+      beaconUuid: "BEAC-SANDTON-01-N",
+    },
+  },
+  priceElasticityCurve = [],
+  syndicatedCampaigns = [],
+  attentionPools = [],
+  campaigns = [],
+  onGenerateApiKey = () => ({
+    id: "cred-default",
+    apiKey: "ac_dev_dummy",
+    apiSecret: "sec_dummy",
+    tier: "DEVELOPER_SANDBOX",
+    activeAgentBotsCount: 1,
+    totalCorridorTicksUsed: 0,
+    totalTicksLimit: 50000,
+    arbitrageFeeRate: 0.015,
+    totalValueSavedUsdc: 0,
+    protocolArbitrageFeesCollectedUsdc: 0,
+    createdAt: Date.now(),
+    lastActiveAt: Date.now(),
+    status: "ACTIVE",
+  }),
+  onRecordArbitrageSavings = () => ({
+    id: "arb-default",
+    txHash: "0x0",
+    timestamp: Date.now(),
+    agentId: "agent-0",
+    merchantStore: "Store",
+    dealItem: "Item",
+    originalPriceZar: 100,
+    negotiatedPriceZar: 80,
+    totalValueSavedZar: 20,
+    totalValueSavedUsdc: 1.1,
+    arbitrageFeeSlicePercent: 1.5,
+    arbitrageFeeCollectedUsdc: 0.01,
+    settlementChain: "base",
+    status: "CONFIRMED_ON_CHAIN",
+  }),
+  onRunElasticitySimulation = () => [],
+
+  onClaimAffiliatePayout = () => 0,
+  onUpdateAttentionBidPool = () => {},
+  onSponsorStorage = () => {},
+  onUploadCampaign,
+}: LandingPageProps) {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const SHOW_PITCH_DECK = false;
+  const [pitchDeckOpen, setPitchDeckOpen] = useState(false);
+  const [isDirectDownloading, setIsDirectDownloading] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  const handleDirectDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      setIsDirectDownloading(true);
+      const { downloadPitchDeckPDF } = await import("@/lib/pitch-deck-pdf");
+      await downloadPitchDeckPDF();
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 3000);
+    } catch (err) {
+      console.error("Direct PDF download error:", err);
+    } finally {
+      setIsDirectDownloading(false);
+    }
+  };
+
+  return (
+    <div className="relative min-h-[100dvh] w-full bg-background bg-aurora text-foreground select-none overflow-x-hidden pb-16 sm:pb-0">
+      {/* 3-Zone Top Bar Contract */}
+      <header className="sticky top-0 z-40 w-full border-b border-border/50 bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-3.5 py-3 sm:px-6 sm:py-4">
+          {/* Zone 1: Wordmark */}
+          <button
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            className="flex items-center gap-2.5 text-left cursor-pointer group shrink-0"
+          >
+            <AutoComLogo size="md" />
+            <span className="text-base sm:text-xl font-extrabold tracking-tight text-foreground">
+              Autocomm
+            </span>
+          </button>
+
+          {/* Zone 2: Clean Nav Links on Desktop */}
+          <nav className="hidden lg:flex items-center gap-3.5 xl:gap-4.5 text-xs font-medium text-muted-foreground">
+            {onOpenPayPalHackathon && (
+              <button
+                onClick={onOpenPayPalHackathon}
+                className="hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.25)]"
+                title="PayPal AI Hackathon 2026 Engine: AG Grid, Channel3, PayPal Sandbox, APIMatic"
+              >
+                <span>🏆</span>
+                <span>PayPal Hub</span>
+              </button>
+            )}
+            {onOpenAgentNames && (
+              <button
+                onClick={onOpenAgentNames}
+                className="hover:text-cyan-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold text-cyan-300 bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/40 shadow-[0_0_8px_rgba(6,182,212,0.25)]"
+                title="Agent Name Sales (.agent Handles) & x402 Marketplace"
+              >
+                <span>🏷️</span>
+                <span>.agent Names</span>
+              </button>
+            )}
+            {onOpenOwnersDirectory && (
+              <button
+                onClick={onOpenOwnersDirectory}
+                className="hover:text-teal-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold text-teal-300 bg-teal-500/10 px-2.5 py-1 rounded-lg border border-teal-500/30 shadow-[0_0_8px_rgba(20,184,166,0.2)]"
+                title="Directory of .agent Name Owners & Verified Handles"
+              >
+                <span>👥</span>
+                <span>Owners</span>
+              </button>
+            )}
+            {onOpenLeaderboard && (
+              <button
+                onClick={onOpenLeaderboard}
+                className="hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.2)]"
+                title="Agent Name Sales Leaderboard (Primary, Secondary, Auctions)"
+              >
+                <span>🏆</span>
+                <span>Leaderboard</span>
+              </button>
+            )}
+            {onOpenAgentPortal && (
+              <button
+                onClick={onOpenAgentPortal}
+                className="hover:text-teal-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold text-teal-300 bg-teal-500/10 px-2.5 py-1 rounded-lg border border-teal-500/30"
+                title="Agent API Tokens, 1.5% Arbitrage Ledger, Live Playground & How-To Guide"
+              >
+                <Terminal className="w-3.5 h-3.5 text-teal-400" />
+                <span>Agent API &amp; Dev</span>
+              </button>
+            )}
+            <button
+              onClick={onOpenMerchantDashboard}
+              className="hover:text-teal-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold"
+            >
+              <Store className="w-3.5 h-3.5 text-teal-400" />
+              <span>Merchant &amp; Shopify</span>
+            </button>
+            <button
+              onClick={onOpenOpenAdLibrary}
+              className="hover:text-indigo-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold"
+            >
+              <Database className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Ad Library</span>
+            </button>
+            <button
+              onClick={onOpenAutoWallet}
+              className="hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold"
+            >
+              <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+              <span>Auto-Wallet</span>
+            </button>
+            <button
+              onClick={onOpenMarketplace}
+              className="hover:text-cyan-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold"
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Hardware Store</span>
+            </button>
+            <button
+              onClick={onOpenBitchat}
+              className="hover:text-teal-300 transition-colors cursor-pointer flex items-center gap-1.5 font-bold bg-teal-500/10 px-2.5 py-1 rounded-lg border border-teal-500/30 text-teal-300"
+              title="Open BitChat BLE Mesh & Nostr A2A Terminal"
+            >
+              <Radio className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
+              <span>BitChat Mesh</span>
+            </button>
+            {/* Hidden Pitch Deck button */}
+            {SHOW_PITCH_DECK && (
+              <button
+                onClick={() => setPitchDeckOpen(true)}
+                className="text-amber-400 hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-1 font-bold bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/30"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Pitch Deck</span>
+              </button>
+            )}
+          </nav>
+
+          {/* Zone 3: Action Buttons */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* Web3 Multi-Chain Wallet Button */}
+            {onOpenWeb3Wallet && (
+              <button
+                onClick={onOpenWeb3Wallet}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-200 border border-teal-500/40 text-xs font-mono font-bold shadow-sm transition-all active:scale-95 cursor-pointer ring-1 ring-teal-500/20"
+                title="Open Web3 Multi-Chain Rail"
+              >
+                <Wallet className="w-3.5 h-3.5 text-teal-400" />
+                <span className="hidden sm:inline">${walletUsdcBalance.toFixed(1)} USDC</span>
+                <span className="px-1.5 py-0.2 rounded bg-teal-500/20 text-teal-300 text-[10px] font-mono capitalize">
+                  {activeChain}
+                </span>
+              </button>
+            )}
+
+            {/* Hidden Direct PDF Download Quick Button */}
+            {SHOW_PITCH_DECK && (
+              <button
+                onClick={handleDirectDownload}
+                disabled={isDirectDownloading}
+                className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-teal-500/20 to-emerald-500/20 hover:from-teal-500/30 hover:to-emerald-500/30 text-teal-300 border border-teal-500/40 text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                title="Direct Download Pitch Deck PDF"
+              >
+                {downloadSuccess ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-teal-400" />
+                    <span>PDF Downloaded</span>
+                  </>
+                ) : isDirectDownloading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+                    <span>Generating…</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Pitch Deck (PDF)</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            <PWAInstallButton className="hidden md:flex" />
+
+            {currentUser ? (
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="hidden sm:flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-mono text-primary">
+                  <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  <span className="truncate max-w-[110px]">{currentUser.displayName}</span>
+                </div>
+                <button
+                  onClick={onLaunchLiveMesh}
+                  className="bg-cta rounded-xl px-3 sm:px-4 py-2 text-xs font-bold text-accent-foreground shadow-amber hover:scale-105 active:scale-95 transition-all cursor-pointer whitespace-nowrap min-h-[40px] flex items-center gap-1"
+                >
+                  <span>Launch 3D</span>
+                  <span>→</span>
+                </button>
+                <button
+                  onClick={() => {
+                    signOutPasskey();
+                    onSignOut();
+                  }}
+                  className="rounded-xl border border-border/80 px-2 sm:px-2.5 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer min-h-[40px]"
+                  title="Sign out"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {onOpenCreateAgent && (
+                  <button
+                    onClick={onOpenCreateAgent}
+                    className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 px-2.5 sm:px-3.5 py-2 text-xs font-bold shadow-md shadow-emerald-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer min-h-[40px] flex items-center gap-1.5"
+                    title="Create autonomous shopping agent"
+                  >
+                    <span className="font-mono text-sm leading-none">+</span>
+                    <span>Create Agent</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => onOpenPasskeyModal("signin")}
+                  className="rounded-xl border border-primary/40 bg-primary/10 px-2.5 sm:px-3.5 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors flex items-center gap-1 min-h-[40px] cursor-pointer"
+                >
+                  <span>🔑</span>
+                  <span className="hidden xs:inline sm:inline">Passkey Sign In</span>
+                  <span className="inline xs:hidden sm:hidden">Sign In</span>
+                </button>
+                <button
+                  onClick={onLaunchLiveMesh}
+                  className="bg-cta hidden sm:inline-flex rounded-xl px-4 py-2 text-xs font-bold text-accent-foreground shadow-amber hover:scale-105 active:scale-95 transition-all cursor-pointer min-h-[40px] items-center"
+                >
+                  Explore Mesh
+                </button>
+              </div>
+            )}
+
+            {/* Hamburger / Navigation Menu Toggle */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex items-center gap-1.5 cursor-pointer"
+              aria-label="Toggle navigation menu"
+              title="Navigation Menu"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {mobileMenuOpen ? (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                ) : (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                )}
+              </svg>
+              <span className="hidden sm:inline text-xs font-mono font-medium">Menu</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Navigation Dropdown Menu (Burger Menu Tab) */}
+        {mobileMenuOpen && (
+          <div className="border-b border-border/50 bg-background/95 backdrop-blur-xl px-4 py-3.5 space-y-2.5 text-xs font-mono animate-in fade-in max-w-7xl mx-auto">
+            {/* 1. AGENT API & DEVELOPER PORTAL (Tokens, Ledger, Playground, Guide) */}
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                if (typeof window !== "undefined") {
+                  window.history.pushState(null, "", "/developer");
+                }
+                if (onOpenAgentPortal) onOpenAgentPortal();
+              }}
+              className="flex items-center justify-between w-full text-left py-2.5 px-3.5 rounded-2xl bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 font-bold border border-teal-500/40 transition-all shadow-sm group cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="p-1.5 rounded-xl bg-teal-500/20 text-teal-300 group-hover:scale-105 transition-transform">
+                  <Terminal className="w-4 h-4 text-teal-400" />
+                </span>
+                <div>
+                  <div className="text-white text-xs font-black flex items-center gap-2">
+                    <span>Agent API &amp; Dev Hub</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-teal-400 text-slate-950 font-mono text-[9px] font-black uppercase tracking-wider">
+                      Separate Page
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] text-teal-200/80 font-normal">
+                    Agent API Tokens · 1.5% Arbitrage Ledger · Live Playground · How-To Guide
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-teal-400 group-hover:translate-x-1 transition-transform" />
+            </button>
+
+            {/* 2. 3D PROXIMITY MESH (/mesh Route) */}
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                onLaunchLiveMesh();
+              }}
+              className="flex items-center justify-between w-full text-left py-2.5 px-3.5 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 font-bold border border-amber-500/40 transition-all shadow-sm group cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="p-1.5 rounded-xl bg-amber-500/20 text-amber-300 group-hover:scale-105 transition-transform text-sm">
+                  🌐
+                </span>
+                <div>
+                  <div className="text-white text-xs font-black flex items-center gap-2">
+                    <span>3D Proximity Mesh Network</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 font-mono text-[9px] font-black uppercase tracking-wider">
+                      /mesh
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] text-amber-200/80 font-normal">
+                    Interactive 3D spatial node sphere, agent deal radar &amp; live A2A negotiations
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-amber-400 group-hover:translate-x-1 transition-transform" />
+            </button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1 border-t border-border/40">
+              {onOpenPayPalHackathon && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenPayPalHackathon();
+                  }}
+                  className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-amber-300 font-bold hover:text-white transition-colors cursor-pointer"
+                >
+                  🏆 PayPal Hub (AG Grid &amp; A2A)
+                </button>
+              )}
+              {onOpenAgentNames && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAgentNames();
+                  }}
+                  className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-cyan-300 font-bold hover:text-white transition-colors cursor-pointer"
+                >
+                  🏷️ .agent Names &amp; x402 Market
+                </button>
+              )}
+              {onOpenOwnersDirectory && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenOwnersDirectory();
+                  }}
+                  className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-teal-300 font-bold hover:text-white transition-colors cursor-pointer"
+                >
+                  👥 Directory of Owners &amp; Registry
+                </button>
+              )}
+              {onOpenLeaderboard && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenLeaderboard();
+                  }}
+                  className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-amber-300 font-bold hover:text-white transition-colors cursor-pointer"
+                >
+                  🏆 Top Sales Leaderboard (P/S/A)
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (onOpenMerchantDashboard) onOpenMerchantDashboard();
+                }}
+                className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-teal-300 font-bold hover:text-white transition-colors cursor-pointer"
+              >
+                🛍️ Merchant &amp; Shopify Hub
+              </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (onOpenOpenAdLibrary) onOpenOpenAdLibrary();
+                }}
+                className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-indigo-300 font-bold hover:text-white transition-colors cursor-pointer"
+              >
+                📢 Open Ad &amp; Media Library
+              </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (onOpenAutoWallet) onOpenAutoWallet();
+                }}
+                className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-amber-300 font-bold hover:text-white transition-colors cursor-pointer"
+              >
+                🎯 FinTech Auto-Wallet &amp; Wishlist
+              </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (onOpenMarketplace) onOpenMarketplace();
+                }}
+                className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-cyan-300 font-bold hover:text-white transition-colors cursor-pointer"
+              >
+                📡 Hardware &amp; FinTech Store
+              </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (onOpenBitchat) onOpenBitchat();
+                }}
+                className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-teal-300 font-bold hover:text-white transition-colors cursor-pointer"
+              >
+                📶 BitChat BLE Mesh Terminal
+              </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (onOpenWeb3Wallet) onOpenWeb3Wallet();
+                }}
+                className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-purple-300 font-bold hover:text-white transition-colors cursor-pointer"
+              >
+                🔵 Web3 Wallet (${walletUsdcBalance.toFixed(1)} USDC)
+              </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenWalkthrough();
+                }}
+                className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-primary font-bold hover:text-white transition-colors cursor-pointer"
+              >
+                💡 Interactive Walkthrough Guide
+              </button>
+              {SHOW_PITCH_DECK && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setPitchDeckOpen(true);
+                  }}
+                  className="block w-full text-left py-2 px-2.5 rounded-xl hover:bg-muted/40 text-amber-400 font-bold hover:text-white transition-colors cursor-pointer"
+                >
+                  📄 View Pitch Deck
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* Hero Section */}
+      <section
+        id="protocol"
+        className="relative mx-auto max-w-5xl px-3.5 pt-8 pb-14 sm:px-6 sm:pt-16 sm:pb-24 text-center flex flex-col items-center"
+      >
+        {/* Unboxed Metadata Kicker */}
+        <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-mono text-primary leading-tight">
+          <span>Autocomm Mesh</span>
+          <span aria-hidden="true">·</span>
+          <span>WebAuthn FIDO2</span>
+          <span aria-hidden="true">·</span>
+          <span>50m Instant Settlement</span>
+          <span aria-hidden="true">·</span>
+          <span className="text-amber-400">Seed Stage</span>
+        </div>
+
+        {/* Big Headline */}
+        <h1 className="mt-4 text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-foreground text-balance leading-[1.08] sm:leading-[1.05] max-w-4xl mx-auto">
+          Autonomous Realtime Commerce Network
+        </h1>
+
+        {/* Subheading */}
+        <h2 className="mt-3.5 sm:mt-5 text-lg sm:text-2xl md:text-3xl font-bold tracking-tight text-accent text-balance leading-snug max-w-3xl mx-auto">
+          Where personal AI shopping agents negotiate deals with merchant agents live within 50
+          meters of retail stores and billboards
+        </h2>
+
+        {/* Descriptive Body */}
+        <p className="mt-4 text-xs sm:text-base text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+          Never miss any brand specials, discounts, or promotions again. Your personal AI agent
+          negotiates &gt;50% discounts for everything you love, pass by, or never walk into—while
+          merchants push dynamic real-time deals to foot and commuter traffic 24/7/365.
+        </p>
+
+        {/* Responsive CTA Group */}
+        <div className="mt-6 flex flex-col xs:flex-row sm:flex-row items-center justify-center gap-3 w-full sm:w-auto flex-wrap">
+          <button
+            onClick={onLaunchLiveMesh}
+            className="bg-cta w-full sm:w-auto rounded-2xl px-6 sm:px-8 py-3.5 text-sm sm:text-base font-bold text-accent-foreground shadow-amber hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer min-h-[48px]"
+          >
+            <span>Launch 3D Proximity Mesh</span>
+            <span>→</span>
+          </button>
+
+          {/* Hidden Interactive Pitch Deck Button */}
+          {SHOW_PITCH_DECK && (
+            <button
+              onClick={() => setPitchDeckOpen(true)}
+              className="rounded-2xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 px-5 sm:px-6 py-3.5 text-sm sm:text-base font-bold text-amber-300 transition-all flex items-center justify-center gap-2 cursor-pointer min-h-[48px] w-full sm:w-auto shadow-lg shadow-amber-500/10"
+            >
+              <FileText className="w-4 h-4 text-amber-400" />
+              <span>View Pitch Deck</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            </button>
+          )}
+
+          {/* Hidden Direct Download Pitch Deck PDF */}
+          {SHOW_PITCH_DECK && (
+            <button
+              onClick={handleDirectDownload}
+              disabled={isDirectDownloading}
+              className="rounded-2xl border border-teal-500/50 bg-teal-500/10 hover:bg-teal-500/20 px-5 sm:px-6 py-3.5 text-sm sm:text-base font-bold text-teal-300 transition-all flex items-center justify-center gap-2 cursor-pointer min-h-[48px] w-full sm:w-auto shadow-lg shadow-teal-500/10 disabled:opacity-50"
+            >
+              {downloadSuccess ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-teal-400" />
+                  <span>PDF Downloaded!</span>
+                </>
+              ) : isDirectDownloading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+                  <span>Generating PDF…</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 text-teal-400" />
+                  <span>Download Deck (PDF)</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Quick Proof Metrics */}
+        <div className="mt-8 pt-5 grid grid-cols-3 gap-2 sm:gap-6 border-t border-border/40 w-full max-w-lg mx-auto text-center">
+          <div className="p-1 sm:p-2">
+            <p className="font-mono text-xl sm:text-3xl font-bold text-primary tabular-nums">
+              20-50m
+            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">Micro-Mesh Radius</p>
+          </div>
+          <div className="p-1 sm:p-2">
+            <p className="font-mono text-xl sm:text-3xl font-bold text-accent tabular-nums">
+              &lt;25ms
+            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">A2A Handshake</p>
+          </div>
+          <div className="p-1 sm:p-2">
+            <p className="font-mono text-xl sm:text-3xl font-bold text-foreground tabular-nums">
+              +50% OFF
+            </p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">Avg Agent Bargain</p>
+          </div>
+        </div>
+
+        {/* Ambient Distribution: 5 Surfaces Banner Section */}
+        <div className="mt-12 sm:mt-16 w-full max-w-5xl mx-auto text-center space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 border border-teal-500/30 text-teal-400 text-xs font-mono font-bold">
+            <span className="h-2 w-2 rounded-full bg-teal-400 animate-pulse" />
+            <span>Multi-Device Omnipresence</span>
+          </div>
+          <h2 className="text-xl sm:text-3xl font-extrabold text-foreground tracking-tight max-w-3xl mx-auto">
+            Ambient distribution: One commerce layer. Five surfaces. Zero missed intent
+          </h2>
+          <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl mx-auto">
+            From smartphones, smartwatches, pocket AI devices to AR spatial glasses and connected
+            vehicle dashboards; Autocomm unifies real-time agentic deal bargaining across every
+            surface you interact with.
+          </p>
+
+          <div className="glass relative rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-teal-500/30 shadow-2xl overflow-hidden group">
+            <div className="relative rounded-xl sm:rounded-2xl overflow-hidden border border-border/80 bg-slate-950">
+              <img
+                src="/autocom-5-surfaces.jpg"
+                alt="Ambient distribution: One commerce layer. Five surfaces. Zero missed intent"
+                className="w-full h-auto object-cover rounded-xl shadow-lg transition-transform duration-500 group-hover:scale-[1.01]"
+                loading="eager"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent pointer-events-none" />
+            </div>
+
+            {/* 5 Surfaces Quick Navigation Grid Badges */}
+            <div className="mt-3 grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-5 gap-2 text-left pt-1">
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-teal-500/20 space-y-0.5">
+                <div className="text-teal-400 font-mono text-[10px] sm:text-xs font-black tracking-wider flex items-center gap-1">
+                  <span>📱</span> PHONE
+                </div>
+                <p className="text-[10px] sm:text-xs font-medium text-slate-300">
+                  Full spatial deal deck
+                </p>
+              </div>
+
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-teal-500/20 space-y-0.5">
+                <div className="text-teal-400 font-mono text-[10px] sm:text-xs font-black tracking-wider flex items-center gap-1">
+                  <span>⌚</span> WATCH
+                </div>
+                <p className="text-[10px] sm:text-xs font-medium text-slate-300">
+                  Negotiation at a glance
+                </p>
+              </div>
+
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-teal-500/20 space-y-0.5">
+                <div className="text-teal-400 font-mono text-[10px] sm:text-xs font-black tracking-wider flex items-center gap-1">
+                  <span>🧭</span> MUSE
+                </div>
+                <p className="text-[10px] sm:text-xs font-medium text-slate-300">
+                  Pocket ambient commerce
+                </p>
+              </div>
+
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-teal-500/20 space-y-0.5">
+                <div className="text-teal-400 font-mono text-[10px] sm:text-xs font-black tracking-wider flex items-center gap-1">
+                  <span>👓</span> AR GLASSES
+                </div>
+                <p className="text-[10px] sm:text-xs font-medium text-slate-300">
+                  Offers inside the world
+                </p>
+              </div>
+
+              <div className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-teal-500/20 space-y-0.5 col-span-2 xs:col-span-1 sm:col-span-1">
+                <div className="text-teal-400 font-mono text-[10px] sm:text-xs font-black tracking-wider flex items-center gap-1">
+                  <span>🚘</span> IN-CAR
+                </div>
+                <p className="text-[10px] sm:text-xs font-medium text-slate-300">
+                  Offers on the dashboard
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Value Proposition Grid: Consumers, Merchants & Brands */}
+        <div className="mt-14 sm:mt-20 w-full max-w-7xl mx-auto text-center space-y-8 pt-8 border-t border-border/40">
+          <div className="max-w-3xl mx-auto space-y-2">
+            <span className="text-xs font-mono text-primary uppercase tracking-widest font-bold">
+              Tri-Sided Autonomous Marketplace
+            </span>
+            <h2 className="text-2xl sm:text-4xl font-extrabold text-foreground tracking-tight">
+              Why Consumers, Merchants &amp; Brands Win with Autocomm
+            </h2>
+            <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl mx-auto">
+              Converting passive impressions and lost foot traffic into guaranteed spatial commerce.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 text-left">
+            {/* 1. Consumer Pillar */}
+            <div className="glass p-5 sm:p-6 rounded-3xl border border-teal-500/30 space-y-3.5 relative overflow-hidden flex flex-col justify-between shadow-xl">
+              <div>
+                <div className="w-10 h-10 rounded-2xl bg-teal-500/20 text-teal-400 flex items-center justify-center text-xl font-bold mb-3">
+                  🛍️
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-foreground">Consumers</h3>
+                <p className="text-xs font-semibold text-teal-300 mt-1 mb-3">
+                  Never miss any brand specials, discounts, or promotions again.
+                </p>
+                <ul className="space-y-2 text-xs text-muted-foreground">
+                  <li className="flex items-start gap-2">
+                    <span className="text-teal-400 font-bold">✓</span>
+                    <span>
+                      <strong>+50% Algorithmic Discounts:</strong> Personal AI agent negotiates deep
+                      bargains for items you love before you step inside.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-teal-400 font-bold">✓</span>
+                    <span>
+                      <strong>Everything You Walk Past:</strong> Spatial radar captures live
+                      in-store flash markdowns within 20m–50m.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-teal-400 font-bold">✓</span>
+                    <span>
+                      <strong>Shops You Never Walk Into:</strong> Discovers boutique hidden gems and
+                      secures unlisted vouchers automatically.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-teal-400 font-bold">✓</span>
+                    <span>
+                      <strong>Passkey QR Checkout:</strong> Biometric checkout vouchers ready
+                      instantly for the cashier.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* 2. Merchant Pillar */}
+            <div className="glass p-5 sm:p-6 rounded-3xl border border-amber-500/30 space-y-3.5 relative overflow-hidden flex flex-col justify-between shadow-xl">
+              <div>
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl font-bold mb-3">
+                  🏬
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-foreground">Merchants</h3>
+                <p className="text-xs font-semibold text-amber-300 mt-1 mb-3">
+                  An agentic salesman that never sleeps—monetizing all foot &amp; drive-by traffic.
+                </p>
+                <ul className="space-y-2 text-xs text-muted-foreground">
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-400 font-bold">✓</span>
+                    <span>
+                      <strong>Foot &amp; Commuter Drive-By:</strong> Pushes dynamic promos to
+                      walkers and vehicles within 50m of your storefront 24/7/365.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-400 font-bold">✓</span>
+                    <span>
+                      <strong>Dynamic Sales Targets:</strong> Pricing engine adjusts discounts based
+                      on time of day, inventory surplus, and daily revenue quotas.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-400 font-bold">✓</span>
+                    <span>
+                      <strong>Guaranteed Foot Traffic:</strong> Turns passive mall passersby into
+                      paying walk-in customers with verified conversion.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-400 font-bold">✓</span>
+                    <span>
+                      <strong>Zero POS Friction:</strong> Compatible with any existing retail POS
+                      scanner via standard 2D QR token verification.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* 3. Brand Pillar */}
+            <div className="glass p-5 sm:p-6 rounded-3xl border border-purple-500/30 space-y-3.5 relative overflow-hidden flex flex-col justify-between shadow-xl">
+              <div>
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center text-xl font-bold mb-3">
+                  🏷️
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-foreground">
+                  Brands &amp; Advertisers
+                </h3>
+                <p className="text-xs font-semibold text-purple-300 mt-1 mb-3">
+                  Converts billboard and digital adverts directly into closed in-store sales.
+                </p>
+                <ul className="space-y-2 text-xs text-muted-foreground">
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 font-bold">✓</span>
+                    <span>
+                      <strong>Never Miss Promotional Ads:</strong> Replaces unseen desktop ads with
+                      direct, transactional pushes to nearby consumer AI agents.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 font-bold">✓</span>
+                    <span>
+                      <strong>Billboard-to-Sale Conversion:</strong> Connected outdoor road network
+                      billboards broadcast instant micro-deals to commuters.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 font-bold">✓</span>
+                    <span>
+                      <strong>100% Attribution &amp; High ROI:</strong> Pay strictly on verified
+                      redemptions and in-store basket sales rather than empty clicks.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 font-bold">✓</span>
+                    <span>
+                      <strong>Co-Op Marketing Power:</strong> Brands co-fund localized retailer
+                      promotions with real-time budget allocation controls.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Decentralized Open Ad & Media Library Public Showcase */}
+        <div id="ad-library" className="mt-12 sm:mt-16 w-full max-w-7xl mx-auto text-left">
+          <AdLibraryView
+            campaigns={campaigns}
+            onSponsorStorage={onSponsorStorage}
+            onUploadCampaign={onUploadCampaign}
+            walletState={walletState}
+          />
+        </div>
+
+        {/* Visual Showcase: Live Mall Simulator Auto Grid Walk */}
+        <div className="mt-14 sm:mt-18 w-full max-w-7xl mx-auto text-center space-y-2.5">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/30 text-primary text-xs font-mono font-bold">
+            <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+            <span>Interactive Live Simulation</span>
+          </div>
+          <h2 className="text-xl sm:text-3xl font-extrabold text-foreground tracking-tight">
+            Mall Passage Walk × Agentic Commerce Simulation
+          </h2>
+          <p className="text-xs sm:text-sm text-muted-foreground max-w-xl mx-auto">
+            Watch autonomous AI shopping agents navigate indoor passage corridors, enter shops, and
+            trigger real-time micro-deal negotiations.
+          </p>
+
+          {/* Extended to match full width of other cards like media and ad library */}
+          <div className="pt-2 w-full max-w-7xl mx-auto">
+            <div className="glass relative rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-border/80 shadow-2xl overflow-hidden group text-left">
+              <MallSimulator compactEmbed={true} onLaunch3D={onLaunchLiveMesh} />
+            </div>
+          </div>
+        </div>
+
+        {/* Commercialization Engine (Early-Stage Monetization Architectures) */}
+        <div className="mt-12 sm:mt-20 w-full max-w-7xl mx-auto text-left">
+          <MonetizationMatrix
+            walletState={walletState}
+            apiCredentials={apiCredentials}
+            arbitrageLedger={arbitrageLedger}
+            shopifyIntegration={shopifyIntegration}
+            priceElasticityCurve={priceElasticityCurve}
+            syndicatedCampaigns={syndicatedCampaigns}
+            attentionPools={attentionPools}
+            onGenerateApiKey={onGenerateApiKey}
+            onRecordArbitrageSavings={onRecordArbitrageSavings}
+            onRunElasticitySimulation={onRunElasticitySimulation}
+            onClaimAffiliatePayout={onClaimAffiliatePayout}
+            onUpdateAttentionBidPool={onUpdateAttentionBidPool}
+            onOpenAdUploader={onOpenMerchantDashboard}
+            onOpenAdLibrary={onOpenOpenAdLibrary}
+            onOpenMarketplace={onOpenMarketplace}
+            onOpenAgentPortal={onOpenAgentPortal}
+          />
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-border/50 bg-background/80 py-8 px-4 text-center text-xs text-muted-foreground space-y-3">
+        <div className="flex items-center justify-center gap-4 flex-wrap">
+          {SHOW_PITCH_DECK && (
+            <>
+              <button
+                onClick={() => setPitchDeckOpen(true)}
+                className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Pitch Deck</span>
+              </button>
+              <span>·</span>
+              <button
+                onClick={handleDirectDownload}
+                className="text-teal-400 hover:text-teal-300 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Deck PDF</span>
+              </button>
+              <span>·</span>
+            </>
+          )}
+          <a href="mailto:hello@autocomm.xyz" className="hover:text-foreground">
+            Contact: hello@autocomm.xyz
+          </a>
+        </div>
+        <p>© 2026 Autocomm | Silvernest Pty Ltd | All rights reserved.</p>
+      </footer>
+
+      {/* Interactive Pitch Deck Modal */}
+      <Suspense fallback={null}>
+        {pitchDeckOpen && (
+          <PitchDeckModal isOpen={pitchDeckOpen} onClose={() => setPitchDeckOpen(false)} />
+        )}
+      </Suspense>
+    </div>
+  );
+}
