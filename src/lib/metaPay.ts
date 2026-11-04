@@ -23,7 +23,8 @@ const toB64u = (buffer: ArrayBuffer): string => {
 const fromB64u = (value: string): Uint8Array => {
   const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
   const binary = atob(padded);
-  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  const buf = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buf);
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return bytes;
 };
@@ -93,9 +94,9 @@ const ensurePasskey = async (post: PostJson): Promise<string> => {
   try {
     credential = (await navigator.credentials.create({
       publicKey: {
-        challenge: fromB64u(challenge),
+        challenge: fromB64u(challenge) as unknown as BufferSource,
         rp: { name: 'MetaPase', id: rpId },
-        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'metapase-shopper', displayName: 'MetaPase shopper' },
+        user: { id: crypto.getRandomValues(new Uint8Array(16)) as unknown as BufferSource, name: 'metapase-shopper', displayName: 'MetaPase shopper' },
         pubKeyCredParams: [
           { type: 'public-key', alg: -7 },
           { type: 'public-key', alg: -257 },
@@ -142,9 +143,9 @@ export const authorizePayment = async (post: PostJson, transactionToken: string)
   try {
     assertion = (await navigator.credentials.get({
       publicKey: {
-        challenge: fromB64u(challengeResult.data.challenge),
+        challenge: fromB64u(challengeResult.data.challenge) as unknown as BufferSource,
         rpId: challengeResult.data.rpId,
-        allowCredentials: [{ type: 'public-key', id: fromB64u(credentialId) }],
+        allowCredentials: [{ type: 'public-key', id: fromB64u(credentialId) as unknown as BufferSource }],
         userVerification: 'required',
         timeout: TIMEOUT_MS
       }
