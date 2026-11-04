@@ -42,6 +42,7 @@ import PasskeyAuthModal from './components/PasskeyAuthModal';
 import MuseBadge from './components/MuseBadge';
 import AgentOnboarding from './components/AgentOnboarding';
 import WishlistModal from './components/WishlistModal';
+import LocationPromptModal from './components/LocationPromptModal';
 
 const VIEWS: { id: DeviceProfile; label: string; icon: LucideIcon }[] = [
   { id: 'desktop', label: 'Desktop', icon: Laptop },
@@ -244,6 +245,7 @@ export default function App() {
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isWishlistModalOpen, setIsWishlistModalOpen] = useState<boolean>(false);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     try {
@@ -261,16 +263,50 @@ export default function App() {
   }, [auth]);
 
   // Always track user location for drive-by commuters and mall detection
-  const { fix, error: geoError, supported: geoSupported } = useGeolocation(true);
+  const { fix, error: geoError, supported: geoSupported, requestLocation } = useGeolocation(true);
   const compass = useHeading();
+
+  // Prompt user to accept location tracking at app start if not yet accepted/dismissed
+  useEffect(() => {
+    try {
+      const choice = localStorage.getItem('metapase:location_prompt_choice');
+      if (choice) return;
+    } catch {}
+
+    if (typeof navigator !== 'undefined' && 'permissions' in navigator) {
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then(status => {
+          if (status.state === 'granted') {
+            try {
+              localStorage.setItem('metapase:location_prompt_choice', 'granted');
+            } catch {}
+            return;
+          }
+          const timer = setTimeout(() => setIsLocationModalOpen(true), 700);
+          return () => clearTimeout(timer);
+        })
+        .catch(() => {
+          const timer = setTimeout(() => setIsLocationModalOpen(true), 700);
+          return () => clearTimeout(timer);
+        });
+    } else {
+      const timer = setTimeout(() => setIsLocationModalOpen(true), 700);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const addLog = useCallback((source: LogEntry['source'], message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev.slice(-199), { id: makeLogId(), timestamp: new Date().toLocaleTimeString(), source, message, type }]);
   }, []);
 
-  // Continuous auto-detection of mall from user GPS coordinates
+  // Continuous auto-detection of mall or live user position from user GPS coordinates
   useEffect(() => {
     if (!fix) return;
+    try {
+      localStorage.setItem('metapase:location_prompt_choice', 'granted');
+    } catch {}
+
     let closestMall = MALLS_DATABASE[0];
     let minDistance = haversineM(fix, closestMall.gpsCenter);
 
@@ -290,6 +326,13 @@ export default function App() {
         addLog('SYSTEM', `Auto-detected venue: ${closestMall.name} (${Math.round(minDistance)}m away)`, 'success');
       } else if (!autoDetectedMallName) {
         setAutoDetectedMallName(closestMall.name);
+      }
+    } else {
+      // User is outdoors away from the 4 pre-mapped malls: center nearby stores around user coordinates
+      if (!autoDetectedMallName || autoDetectedMallName === closestMall.name) {
+        setAnchor({ lat: fix.lat, lng: fix.lng });
+        setAutoDetectedMallName(`Nearby GPS (±${Math.round(fix.accuracyM)}m)`);
+        addLog('SYSTEM', `Live GPS active: tracking deals around ${fix.lat.toFixed(4)}, ${fix.lng.toFixed(4)} (±${Math.round(fix.accuracyM)}m)`, 'success');
       }
     }
   }, [fix, activeMallId, autoDetectedMallName, addLog]);
@@ -881,6 +924,7 @@ export default function App() {
     geoError,
     geoSupported,
     onCenterVenue: centerVenue,
+    onOpenLocationPrompt: () => setIsLocationModalOpen(true),
     intent,
     onIntentChange: setIntent,
     maxBudgetZAR,
@@ -1118,6 +1162,23 @@ export default function App() {
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
                 <MuseBadge />
 
+                {/* Live Location / GPS Indicator Pill */}
+                <button
+                  type="button"
+                  onClick={() => setIsLocationModalOpen(true)}
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition border ${
+                    fix
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                      : 'border-white/10 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={fix ? `Live GPS tracking active (±${Math.round(fix.accuracyM)}m) — tap to view or change` : 'Tap to enable live GPS location tracking'}
+                >
+                  <Navigation2 className={`h-3.5 w-3.5 ${fix ? 'text-emerald-400' : 'text-slate-400'}`} />
+                  <span className="hidden min-[620px]:inline">
+                    {fix ? (autoDetectedMallName ? autoDetectedMallName.split(' ')[0] : 'GPS') : 'Enable GPS'}
+                  </span>
+                </button>
+
                 {/* Promo Credit Balance */}
                 <button
                   type="button"
@@ -1235,7 +1296,27 @@ export default function App() {
         }}
       />
 
-      {!auth && <AgentOnboarding onCreated={setAuth} />}
+      {!auth && (
+        <AgentOnboarding
+          onCreated={newAuth => {
+            setAuth(newAuth);
+            setTimeout(() => setIsLocationModalOpen(true), 400);
+          }}
+        />
+      )}
+
+      {/* Location Tracking Permission Modal */}
+      <LocationPromptModal
+        isOpen={isLocationModalOpen}
+        onClose={() => setIsLocationModalOpen(false)}
+        onRequestLocation={requestLocation}
+        onUseSimulated={() => {
+          try {
+            localStorage.setItem('metapase:location_prompt_choice', 'simulated');
+          } catch {}
+          addLog('SYSTEM', `Using simulated venue location (${autoDetectedMallName || 'Bel Air Shopping Centre'})`, 'info');
+        }}
+      />
 
       {/* Voice & Text Shopping Wishlist Modal */}
       <WishlistModal

@@ -29,7 +29,7 @@ export const readMuseConfig = (env: Env = process.env): MuseConfig | null => {
     apiKey,
     baseUrl: (env.MUSE_API_BASE ?? DEFAULT_MUSE_BASE).trim().replace(/\/+$/, ''),
     model: (env.MUSE_MODEL ?? DEFAULT_MUSE_MODEL).trim(),
-    timeoutMs: Number(env.MUSE_TIMEOUT_MS) > 0 ? Number(env.MUSE_TIMEOUT_MS) : 6000
+    timeoutMs: Number(env.MUSE_TIMEOUT_MS) > 0 ? Number(env.MUSE_TIMEOUT_MS) : 15000
   };
 };
 
@@ -116,6 +116,7 @@ export async function museChat(system: string, user: string, options: ChatOption
   const started = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  const tokenLimit = Math.max(2048, options.maxTokens ? options.maxTokens + 1200 : 2048);
   try {
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -123,7 +124,7 @@ export async function museChat(system: string, user: string, options: ChatOption
       body: JSON.stringify({
         model: config.model,
         temperature: options.temperature ?? 0.4,
-        max_tokens: options.maxTokens ?? 300,
+        max_completion_tokens: tokenLimit,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }

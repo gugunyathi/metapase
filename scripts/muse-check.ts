@@ -17,7 +17,7 @@ console.log(`Model:    ${config.model}`);
 
 const started = Date.now();
 try {
-  const answer = await museChat('Reply with exactly the word: ready', 'ping', { config, maxTokens: 20, temperature: 0 });
+  const answer = await museChat('Reply with exactly the word: ready', 'ping', { config, temperature: 0.2 });
   console.log(`1. Connection OK in ${Date.now() - started} ms. Muse said: ${JSON.stringify(answer.trim().slice(0, 80))}`);
 } catch (error) {
   console.error(`1. Connection FAILED: ${error instanceof Error ? error.message : error}`);

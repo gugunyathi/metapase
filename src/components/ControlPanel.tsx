@@ -40,6 +40,7 @@ export interface ControlPanelProps {
   };
   liveNodeIds: Set<string>;
   onSimulateRun?: () => void;
+  onOpenLocationPrompt?: () => void;
 }
 
 const PANEL = 'rounded-3xl border border-white/[0.06] bg-white/[0.02] p-5 backdrop-blur';
@@ -160,6 +161,11 @@ export default function ControlPanel(props: ControlPanelProps) {
         <button type="button" onClick={onCenterVenue} disabled={!fix} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/5 disabled:opacity-40">
           <LocateFixed className="h-3.5 w-3.5" />Center the venue on my location
         </button>
+        {!fix && props.onOpenLocationPrompt && (
+          <button type="button" onClick={props.onOpenLocationPrompt} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400/15 border border-emerald-400/30 px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-400/25">
+            <Satellite className="h-3.5 w-3.5" />Enable GPS Location Tracking
+          </button>
+        )}
       </section>
 
       <section className={PANEL}>
