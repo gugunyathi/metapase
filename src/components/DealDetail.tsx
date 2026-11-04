@@ -53,6 +53,57 @@ export default function DealDetail({
   const [showPayPal, setShowPayPal] = useState(initialShowPayPal);
   const [message, setMessage]       = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
+  const [swipeOffset, setSwipeOffset] = useState<number>(0);
+  const [isSwiping, setIsSwiping]     = useState<boolean>(false);
+  const swipePointerRef = useRef<{ id: number; startX: number; startY: number } | null>(null);
+
+  const handleHeroPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    swipePointerRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY };
+  };
+
+  const handleHeroPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const sp = swipePointerRef.current;
+    if (!sp || sp.id !== e.pointerId) return;
+    const dx = e.clientX - sp.startX;
+    const dy = e.clientY - sp.startY;
+
+    if (!isSwiping) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        setIsSwiping(true);
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } else {
+        return;
+      }
+    }
+
+    setSwipeOffset(dx);
+  };
+
+  const handleHeroPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const sp = swipePointerRef.current;
+    swipePointerRef.current = null;
+    if (!sp) return;
+
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+
+    const currentOffset = swipeOffset;
+    setIsSwiping(false);
+    setSwipeOffset(0);
+
+    if (currentOffset < -75) {
+      // Swiped left into Park!
+      onPark(deal, price, bestOffer);
+      setMessage({ tone: 'ok', text: `Parked ${deal.ad.itemName}!` });
+      window.setTimeout(onClose, 350);
+    } else if (currentOffset > 75) {
+      // Swiped right into Bag / Buy Now!
+      void buyNow(price);
+    }
+  };
+
   /* ── lock body scroll, focus close btn, handle Escape ── */
   useEffect(() => {
     closeRef.current?.focus();
@@ -213,16 +264,24 @@ export default function DealDetail({
         {/* ── scrollable body ── */}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2">
 
-          {/* hero image */}
+          {/* hero image - swipable left (Park) or right (Bag) */}
           <section
-            className={`metapase-sheet-in relative h-44 min-[400px]:h-52 overflow-hidden rounded-[1.5rem] bg-slate-950`}
+            onPointerDown={handleHeroPointerDown}
+            onPointerMove={handleHeroPointerMove}
+            onPointerUp={handleHeroPointerUp}
+            onPointerCancel={handleHeroPointerUp}
+            className="metapase-sheet-in relative h-48 min-[400px]:h-56 overflow-hidden rounded-[1.5rem] bg-slate-950 cursor-grab active:cursor-grabbing select-none transition-transform"
+            style={{
+              transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px) rotate(${swipeOffset * 0.05}deg)` : undefined,
+              transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
+            }}
           >
             {deal.ad.imageUrl ? (
               <>
                 <img
                   src={deal.ad.imageUrl}
                   alt={deal.ad.itemName}
-                  className="absolute inset-0 h-full w-full object-cover"
+                  className="absolute inset-0 h-full w-full object-cover pointer-events-none"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-black/20" />
               </>
@@ -251,6 +310,32 @@ export default function DealDetail({
               </h2>
             </div>
 
+            {/* Swipe Left Overlay (Park) */}
+            {swipeOffset < 0 && (
+              <div
+                className="absolute inset-0 z-30 flex items-center justify-center bg-amber-950/60 backdrop-blur-sm pointer-events-none transition-opacity"
+                style={{ opacity: Math.min(1, Math.abs(swipeOffset) / 60) }}
+              >
+                <span className="flex items-center gap-2 rounded-2xl border-2 border-amber-400 bg-amber-900/90 px-4 py-2 text-sm font-bold text-amber-200 shadow-[0_0_24px_rgba(251,191,36,0.8)]">
+                  <SquareParking className="h-5 w-5 text-amber-300" />
+                  RELEASE TO PARK
+                </span>
+              </div>
+            )}
+
+            {/* Swipe Right Overlay (Bag / Buy) */}
+            {swipeOffset > 0 && (
+              <div
+                className="absolute inset-0 z-30 flex items-center justify-center bg-emerald-950/60 backdrop-blur-sm pointer-events-none transition-opacity"
+                style={{ opacity: Math.min(1, Math.abs(swipeOffset) / 60) }}
+              >
+                <span className="flex items-center gap-2 rounded-2xl border-2 border-emerald-400 bg-emerald-900/90 px-4 py-2 text-sm font-bold text-emerald-200 shadow-[0_0_24px_rgba(52,211,153,0.8)]">
+                  <Wallet className="h-5 w-5 text-emerald-300" />
+                  RELEASE TO BUY / BAG
+                </span>
+              </div>
+            )}
+
             {/* Shopify virtual badge */}
             {deal.isShopifyVirtual && (
               <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full border border-cyan-400 bg-cyan-950/90 px-2 py-0.5 text-[11px] text-cyan-200 animate-pulse shadow-[0_0_8px_rgba(34,211,238,0.5)] backdrop-blur">
@@ -258,6 +343,31 @@ export default function DealDetail({
               </span>
             )}
           </section>
+
+          {/* Swipe or Tap gesture control bar */}
+          <div className="mt-3 flex items-center justify-between gap-2 px-1 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                onPark(deal, price, bestOffer);
+                setMessage({ tone: 'ok', text: `Parked ${deal.ad.itemName}!` });
+                window.setTimeout(onClose, 350);
+              }}
+              className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-3.5 py-2 font-semibold text-amber-200 hover:bg-amber-400/20 active:scale-95 transition"
+            >
+              <SquareParking className="h-4 w-4 text-amber-300" />
+              <span>← Swipe or Tap to Park</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void buyNow(price)}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3.5 py-2 font-semibold text-emerald-200 hover:bg-emerald-400/20 active:scale-95 transition"
+            >
+              <span>Swipe or Tap to Bag →</span>
+              <Wallet className="h-4 w-4 text-emerald-300" />
+            </button>
+          </div>
 
           {/* Shopify virtual info row */}
           {deal.isShopifyVirtual && (

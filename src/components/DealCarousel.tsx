@@ -61,7 +61,7 @@ const GAP_PX = 18;
 const VISIBLE_RADIUS = 3.4;
 const SPRING_K = 22;
 const SPRING_C = 2 * Math.sqrt(SPRING_K);
-const DRAG_THRESHOLD_PX = 6;
+const DRAG_THRESHOLD_PX = 10;
 
 export const cruiseFor = (speedMps: number, count: number): number => {
   const speed = Number.isFinite(speedMps) ? Math.max(0, speedMps) : 0;
@@ -121,13 +121,25 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
   const [viewportWidth, setViewportWidth] = useState<number>(0);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mode, setMode] = useState<CarouselMode>('single');
+  const [dropTarget, setDropTarget] = useState<'park' | 'bag' | null>(null);
 
   const positionRef = useRef<number>(0);
   const velocityRef = useRef<number>(0);
   const pinnedUntilRef = useRef<number>(0);
   const pinnedTargetRef = useRef<number | null>(null);
   const hoverRef = useRef<boolean>(false);
-  const dragRef = useRef<{ pointerId: number; startX: number; startPosition: number; lastX: number; lastT: number; velocityPx: number; active: boolean } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startPosition: number;
+    lastX: number;
+    lastY: number;
+    lastT: number;
+    velocityPx: number;
+    active: boolean;
+    cardId: string | null;
+  } | null>(null);
   const suppressClickRef = useRef<boolean>(false);
   const activeIdRef = useRef<string | null>(null);
   const modeRef = useRef<CarouselMode>('single');
@@ -310,7 +322,7 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
         element.style.opacity = String(opacity);
         element.style.zIndex = String(1000 - Math.round(distance * 100));
         element.style.visibility = hidden ? 'hidden' : 'visible';
-        element.style.pointerEvents = hidden || distance > 1.6 ? 'none' : 'auto';
+        element.style.pointerEvents = hidden ? 'none' : 'auto';
       });
 
       if (progressRef.current) {
@@ -351,45 +363,111 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (items.length < 2 || (event.pointerType === 'mouse' && event.button !== 0)) return;
-    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startPosition: positionRef.current, lastX: event.clientX, lastT: performance.now(), velocityPx: 0, active: false };
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    // If the click is directly on an interactive button, let it fire without carousel drag interference
+    if ((event.target as HTMLElement).closest('button, a, input, select')) return;
+    const cardEl = (event.target as HTMLElement).closest('[data-deal-card]');
+    const cardId = cardEl?.getAttribute('data-deal-card') ?? null;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPosition: positionRef.current,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      lastT: performance.now(),
+      velocityPx: 0,
+      active: false,
+      cardId,
+    };
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+
     if (!drag.active) {
-      if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
       drag.active = true;
       event.currentTarget.setPointerCapture(event.pointerId);
     }
+
     const nowT = performance.now();
     const elapsed = Math.max(1, nowT - drag.lastT);
     const instant = ((event.clientX - drag.lastX) / elapsed) * 1000;
     drag.velocityPx = drag.velocityPx * 0.7 + instant * 0.3;
     drag.lastX = event.clientX;
+    drag.lastY = event.clientY;
     drag.lastT = nowT;
-    positionRef.current = drag.startPosition - dx / (cardWidth + GAP_PX);
-    velocityRef.current = 0;
+
+    // Detect if user is dragging card upwards towards Parked (left) or Bag (right)
+    if (dy < -30 && drag.cardId) {
+      if (dx < 20) {
+        setDropTarget('park');
+      } else if (dx > -20) {
+        setDropTarget('bag');
+      } else {
+        setDropTarget(null);
+      }
+    } else {
+      setDropTarget(null);
+      positionRef.current = drag.startPosition - dx / (cardWidth + GAP_PX);
+      velocityRef.current = 0;
+    }
   };
 
   const endDrag = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     dragRef.current = null;
-    if (!drag || !drag.active) return;
+    const target = dropTarget;
+    setDropTarget(null);
+
+    if (!drag) return;
+
+    if (!drag.active) {
+      // Tap / Click detected on a card!
+      if (drag.cardId) {
+        focusAndPin(drag.cardId);
+        onOpen?.(drag.cardId);
+      }
+      return;
+    }
+
     suppressClickRef.current = true;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    velocityRef.current = Math.max(-6, Math.min(6, -drag.velocityPx / (cardWidth + GAP_PX)));
-    pinnedTargetRef.current = null;
-    pinnedUntilRef.current = Date.now() + PIN_MS;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    // Check if card was dropped into Parked or Bag drop target!
+    if (target && drag.cardId) {
+      const foundItem = items.find(i => i.id === drag.cardId);
+      if (foundItem) {
+        const deal = foundItem.deal;
+        const activePrice = deal.negotiatedPriceZAR ?? deal.ad.stickerPriceZAR;
+        const lastRound = deal.rounds[deal.rounds.length - 1];
+        if (target === 'park') {
+          onPark?.(deal, activePrice, lastRound?.agentOfferZAR ?? null);
+        } else if (target === 'bag') {
+          onBuyNow?.(deal, activePrice);
+        }
+      }
+    } else {
+      velocityRef.current = Math.max(-6, Math.min(6, -drag.velocityPx / (cardWidth + GAP_PX)));
+      pinnedTargetRef.current = null;
+      pinnedUntilRef.current = Date.now() + PIN_MS;
+    }
   };
 
   const handleClickCapture = (event: MouseEvent<HTMLDivElement>) => {
     if (!suppressClickRef.current) return;
     suppressClickRef.current = false;
-    event.stopPropagation();
-    event.preventDefault();
+    // Don't swallow clicks if user clicked a button
+    if (!(event.target as HTMLElement).closest('button, a, input, select')) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
   };
 
   const activeIndex = Math.max(0, items.findIndex(item => item.id === activeId));
@@ -406,12 +484,26 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
   return (
     <div>
       <div className="relative z-[1002] mb-3 flex items-center gap-2">
-        <div className="flex flex-1 justify-start">{leading}</div>
+        <div className={`relative flex flex-1 justify-start transition-transform ${dropTarget === 'park' ? 'scale-110' : ''}`}>
+          {leading}
+          {dropTarget === 'park' && (
+            <span className="pointer-events-none absolute -bottom-7 left-0 z-30 flex items-center gap-1 rounded-full border border-amber-400 bg-amber-950 px-2.5 py-0.5 text-[11px] font-bold text-amber-200 shadow-[0_0_12px_rgba(251,191,36,0.6)] animate-bounce">
+              Release to Park
+            </span>
+          )}
+        </div>
         <div className={`min-w-0 text-center text-xs ${narrowHeader ? 'hidden' : ''}`}>
           <p className="truncate font-semibold text-white">{items.length ? `${items.length} deal${items.length === 1 ? '' : 's'} within ${MATCH_RADIUS_M} m` : `Deals within ${MATCH_RADIUS_M} m`}</p>
-          <p className="truncate text-slate-400">{motionLabel(speedMps)}</p>
+          <p className="truncate text-slate-400">{dropTarget ? (dropTarget === 'park' ? 'Drop into Parked' : 'Drop into Bag') : motionLabel(speedMps)}</p>
         </div>
-        <div className="flex flex-1 justify-end">{trailing}</div>
+        <div className={`relative flex flex-1 justify-end transition-transform ${dropTarget === 'bag' ? 'scale-110' : ''}`}>
+          {trailing}
+          {dropTarget === 'bag' && (
+            <span className="pointer-events-none absolute -bottom-7 right-0 z-30 flex items-center gap-1 rounded-full border border-emerald-400 bg-emerald-950 px-2.5 py-0.5 text-[11px] font-bold text-emerald-200 shadow-[0_0_12px_rgba(52,211,153,0.6)] animate-bounce">
+              Release to Bag
+            </span>
+          )}
+        </div>
       </div>
 
       <div
@@ -436,7 +528,7 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
           emptyState
         ) : (
           <>
-            <div className="grid justify-items-center py-3" style={{ transformStyle: 'preserve-3d' }}>
+            <div className="grid justify-items-center pt-2 pb-10 min-h-[500px]" style={{ transformStyle: 'preserve-3d' }}>
               {items.map(item => {
                 const active = item.id === activeId;
                 const isExpanded = item.id === expandedId;
