@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Autocomm - Autonomous Realtime Commerce Network",
-  "short_name": "Autocomm",
+  "name": "MetaPase - Autonomous Realtime Commerce Network",
+  "short_name": "MetaPase",
   "description": "Where your live AI shopping agent negotiates deals within 50 meters on a spinning proximity sphere.",
   "start_url": "/",
   "scope": "/",
@@ -9,13 +9,17 @@
   "orientation": "portrait",
   "background_color": "#05060a",
   "theme_color": "#05060a",
-  "categories": ["shopping", "productivity", "utilities"],
+  "categories": [
+    "shopping",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ]
 }
