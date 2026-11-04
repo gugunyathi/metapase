@@ -43,6 +43,9 @@ import MuseBadge from './components/MuseBadge';
 import AgentOnboarding from './components/AgentOnboarding';
 import WishlistModal from './components/WishlistModal';
 import LocationPromptModal from './components/LocationPromptModal';
+import MallSwitcherModal from './components/MallSwitcherModal';
+import AllProductsSheet from './components/AllProductsSheet';
+import type { CatalogProduct } from './config/products';
 
 const VIEWS: { id: DeviceProfile; label: string; icon: LucideIcon }[] = [
   { id: 'desktop', label: 'Desktop', icon: Laptop },
@@ -231,6 +234,9 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isWishlistModalOpen, setIsWishlistModalOpen] = useState<boolean>(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
+  const [isMallSwitcherOpen, setIsMallSwitcherOpen] = useState<boolean>(false);
+  const [isAllProductsOpen, setIsAllProductsOpen] = useState<boolean>(false);
+  const [allProductsMallId, setAllProductsMallId] = useState<string | 'all'>('all');
 
   useEffect(() => {
     try {
@@ -837,45 +843,67 @@ export default function App() {
       {/* ── Active Mall & Proximity Zone Range Bar ── */}
       <div className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-black/40 px-3.5 py-2.5 backdrop-blur ${compact ? 'mb-2.5' : 'mb-4'}`}>
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-emerald-400/20 to-amber-300/20 text-emerald-300 border border-white/10">
-            <Building2 className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-bold text-white truncate">{activeMall.name}</span>
-              {autoDetectedMallName === activeMall.name && (
-                <span className="rounded-full bg-emerald-400/20 border border-emerald-400/30 px-2 py-0.2 text-[9px] font-extrabold text-emerald-300">
-                  Auto-Detected
-                </span>
-              )}
+          {/* Clickable mall icon+name → opens mall switcher */}
+          <button
+            type="button"
+            onClick={() => setIsMallSwitcherOpen(true)}
+            title="Switch mall"
+            className="flex items-center gap-2 group min-w-0 rounded-xl hover:bg-white/5 transition px-1 -mx-1"
+          >
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-emerald-400/20 to-amber-300/20 text-emerald-300 border border-white/10 group-hover:border-amber-400/40 group-hover:from-amber-400/20 group-hover:to-emerald-400/20 transition">
+              <Building2 className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 text-left">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-bold text-white truncate group-hover:text-amber-200 transition">{activeMall.name}</span>
+                <span className="text-[9px] text-slate-500 group-hover:text-amber-400/70 transition">▾ change</span>
+                {autoDetectedMallName === activeMall.name && (
+                  <span className="rounded-full bg-emerald-400/20 border border-emerald-400/30 px-2 py-0.2 text-[9px] font-extrabold text-emerald-300">
+                    Auto-Detected
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-400 truncate">
+                {fix ? `GPS tracked ±${Math.round(fix.accuracyM)}m` : 'Tracking location…'} · {currentStoreNodes.length} stores
+              </p>
             </div>
-            <p className="text-[10px] text-slate-400 truncate">
-              {fix ? `GPS tracked ±${Math.round(fix.accuracyM)}m` : 'Tracking location…'} · {currentStoreNodes.length} stores
-            </p>
-          </div>
+          </button>
         </div>
 
-        {/* Proximity range mode selector pills (50m, 20m, 1m) */}
-        <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-          {(Object.keys(PROXIMITY_ZONES) as ProximityRadiusMode[]).map(mode => {
-            const z = PROXIMITY_ZONES[mode];
-            const isSel = proximityMode === mode;
-            return (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setProximityMode(mode)}
-                title={z.description}
-                className={`rounded-xl px-2.5 py-1 text-[11px] font-bold transition whitespace-nowrap ${
-                  isSel
-                    ? 'bg-amber-300 text-slate-950 shadow'
-                    : 'bg-white/5 text-slate-300 hover:bg-white/10'
-                }`}
-              >
-                {z.shortLabel}
-              </button>
-            );
-          })}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* View All Products button */}
+          <button
+            type="button"
+            onClick={() => { setAllProductsMallId(activeMallId); setIsAllProductsOpen(true); }}
+            className="flex items-center gap-1 rounded-lg bg-white/5 hover:bg-amber-400/10 border border-white/10 hover:border-amber-400/30 px-2.5 py-1 text-[10px] font-bold text-slate-300 hover:text-amber-200 transition whitespace-nowrap"
+            title="Browse all products in this mall"
+          >
+            <ShoppingBag className="h-3 w-3" />
+            View All Products
+          </button>
+
+          {/* Proximity range mode selector pills (50m, 20m, 1m) */}
+          <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+            {(Object.keys(PROXIMITY_ZONES) as ProximityRadiusMode[]).map(mode => {
+              const z = PROXIMITY_ZONES[mode];
+              const isSel = proximityMode === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setProximityMode(mode)}
+                  title={z.description}
+                  className={`rounded-xl px-2.5 py-1 text-[11px] font-bold transition whitespace-nowrap ${
+                    isSel
+                      ? 'bg-amber-300 text-slate-950 shadow'
+                      : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  {z.shortLabel}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -1457,6 +1485,42 @@ export default function App() {
         }}
         onToggleAutoBuy={id => {
           setWishlist(prev => prev.map(w => w.id === id ? ({ ...w, autoBuy: !w.autoBuy }) : w));
+        }}
+      />
+
+      {/* Mall Switcher Modal */}
+      <MallSwitcherModal
+        isOpen={isMallSwitcherOpen}
+        onClose={() => setIsMallSwitcherOpen(false)}
+        activeMallId={activeMallId}
+        onSelectMall={handleSelectMall}
+        onViewAllProducts={(mallId) => {
+          setAllProductsMallId(mallId);
+          setIsAllProductsOpen(true);
+        }}
+      />
+
+      {/* All Products Sheet */}
+      <AllProductsSheet
+        isOpen={isAllProductsOpen}
+        onClose={() => setIsAllProductsOpen(false)}
+        initialMallId={allProductsMallId}
+        onAddToWishlist={(product: CatalogProduct) => {
+          const newItem: WishlistItem = {
+            id: `wish_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            addedAt: Date.now(),
+            status: 'active',
+            query: product.itemName,
+            keywords: [product.itemName.toLowerCase(), product.category, product.storeName.toLowerCase()],
+            category: product.category,
+            originalText: product.itemName,
+            targetMaxPriceZAR: product.stickerPriceZAR,
+            autoBuy: true,
+            imageUrl: product.imageUrl,
+            storeName: product.storeName
+          };
+          setWishlist(prev => [newItem, ...prev]);
+          addLog('LLAMA_AGENT', `Added "${product.itemName}" from ${product.storeName} to monitored wishlist.`, 'info');
         }}
       />
     </div>
