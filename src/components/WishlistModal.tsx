@@ -30,6 +30,7 @@ interface WishlistModalProps {
   onRemoveWishlistItem: (id: string) => void;
   onToggleAutoBuy: (id: string) => void;
   agentCreditBalanceZAR: number;
+  onBuyWishlist?: () => void;
 }
 
 const QUICK_SUGGESTIONS = [
@@ -56,7 +57,8 @@ export default function WishlistModal({
   onAddWishlistItem,
   onRemoveWishlistItem,
   onToggleAutoBuy,
-  agentCreditBalanceZAR
+  agentCreditBalanceZAR,
+  onBuyWishlist
 }: WishlistModalProps) {
   const [inputText, setInputText] = useState<string>('');
   const [targetMaxPrice, setTargetMaxPrice] = useState<number>(1000);
@@ -664,6 +666,32 @@ export default function WishlistModal({
               Agent Proximity Listening Active
             </span>
           </div>
+
+          {/* Quick Auto-Buy Entire Wishlist Banner */}
+          {wishlist.filter(w => w.status === 'active').length > 0 && onBuyWishlist && (
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-teal-500/15 to-amber-400/20 border border-emerald-500/40 p-3 shadow-lg">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                  Auto-Buy Entire Wishlist
+                </p>
+                <p className="text-[11px] text-slate-300 truncate">
+                  AI negotiates bulk merchant discount & executes Passkey checkout
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onBuyWishlist();
+                }}
+                className="rounded-xl bg-gradient-to-r from-emerald-400 via-teal-400 to-amber-300 px-3.5 py-2 text-xs font-black text-slate-950 shadow-md hover:brightness-110 active:scale-95 transition shrink-0 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Buy Wishlist ({wishlist.filter(w => w.status === 'active').length})</span>
+                <span>→</span>
+              </button>
+            </div>
+          )}
 
           {wishlist.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-slate-500 text-xs">

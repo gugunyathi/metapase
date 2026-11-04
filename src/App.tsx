@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Bot, Building2, Car, Compass as CompassIcon, Glasses, Laptop, Navigation2, RotateCcw, RotateCw, Satellite, ShoppingBag, Smartphone, SquareParking, Volume2, Watch, Wallet, Fingerprint, Gift, Mic } from 'lucide-react';
+import { Bot, Building2, Car, Compass as CompassIcon, Glasses, Laptop, Navigation2, RotateCcw, RotateCw, Satellite, ShoppingBag, Smartphone, SquareParking, Volume2, Watch, Wallet, Fingerprint, Gift, Mic, Sparkles, Loader2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { CartLine, DataSource, Deal, DealCategory, DealStatus, EngineEvent, DeviceProfile, GeoPoint, IntentFilter, ItemSnapshot, LogEntry, NodeReading, PageId, PlacedStore, VenueMode, UserPasskeyAuth, WishlistItem } from './types/metapase';
 import { MATCH_RADIUS_M } from './config/venue';
@@ -45,7 +45,7 @@ import WishlistModal from './components/WishlistModal';
 import LocationPromptModal from './components/LocationPromptModal';
 import MallSwitcherModal from './components/MallSwitcherModal';
 import AllProductsSheet from './components/AllProductsSheet';
-import type { CatalogProduct } from './config/products';
+import { REAL_PRODUCTS, type CatalogProduct } from './config/products';
 
 const VIEWS: { id: DeviceProfile; label: string; icon: LucideIcon }[] = [
   { id: 'desktop', label: 'Desktop', icon: Laptop },
@@ -237,6 +237,8 @@ export default function App() {
   const [isMallSwitcherOpen, setIsMallSwitcherOpen] = useState<boolean>(false);
   const [isAllProductsOpen, setIsAllProductsOpen] = useState<boolean>(false);
   const [allProductsMallId, setAllProductsMallId] = useState<string | 'all'>('all');
+  const [isBuyingWishlist, setIsBuyingWishlist] = useState<boolean>(false);
+  const [buyingWishlistProgress, setBuyingWishlistProgress] = useState<string>('');
 
   useEffect(() => {
     try {
@@ -672,6 +674,124 @@ export default function App() {
     addLog('SYSTEM', 'Demo: you walked on and new offers appeared nearby.', 'success');
     void engine.scan();
   }, [dataSource, engine.refresh, engine.scan, addLog]);
+
+  const handleBuyWishlist = useCallback(async () => {
+    const activeItems = wishlist.filter(w => w.status === 'active');
+    if (activeItems.length === 0) {
+      setIsWishlistModalOpen(true);
+      return;
+    }
+    if (isBuyingWishlist) return;
+
+    setIsBuyingWishlist(true);
+    addLog('LLAMA_AGENT', `🤖 Initiating autonomous Buy Wishlist sequence for ${activeItems.length} items using saved Passkeys with bulk merchant negotiation...`, 'info');
+
+    // Navigate to home if on another page so the user can watch the card diving into the bag
+    if (page !== 'home') {
+      navigate('home');
+    }
+
+    // Target is the Bag Corner Button
+    const bagTarget = document.querySelector('[data-corner="bag"]');
+    const bagRect = bagTarget?.getBoundingClientRect();
+    const toX = bagRect ? bagRect.left + bagRect.width / 2 : window.innerWidth - 60;
+    const toY = bagRect ? bagRect.top + bagRect.height / 2 : window.innerHeight - 80;
+
+    for (let i = 0; i < activeItems.length; i++) {
+      const wish = activeItems[i];
+      setBuyingWishlistProgress(`Auto-Buying ${i + 1}/${activeItems.length}...`);
+
+      // 1. Resolve matching item snapshot from active deals or REAL_PRODUCTS
+      const matchedDeal = Object.values(engine.deals).find(d =>
+        wishMatchesDeal(wish, { itemName: d.ad.itemName, sku: d.ad.sku, category: d.category })
+      );
+
+      let snapshot: ItemSnapshot;
+      if (matchedDeal) {
+        snapshot = snapshotOf(matchedDeal);
+      } else {
+        const p = REAL_PRODUCTS.find(prod => {
+          const hay = `${prod.itemName} ${prod.storeName} ${prod.category} ${prod.tag}`.toLowerCase();
+          const words = [wish.query, ...(wish.keywords ?? [])].map(w => w.toLowerCase());
+          return words.some(w => w.length >= 3 && hay.includes(w));
+        }) ?? REAL_PRODUCTS[i % REAL_PRODUCTS.length];
+
+        snapshot = {
+          storeId: p.storeId,
+          campaignId: `wish_${wish.id}_${p.sku}`,
+          sku: p.sku,
+          itemName: wish.query || p.itemName,
+          outletName: wish.storeName || p.storeName,
+          category: wish.category ?? p.category,
+          stickerPriceZAR: wish.targetMaxPriceZAR > 0 ? wish.targetMaxPriceZAR : p.stickerPriceZAR,
+          imageUrl: wish.imageUrl ?? p.imageUrl
+        };
+      }
+
+      // 2. Card coordinates for flight: start from deal card on carousel if exists, else center
+      const cardElem = document.querySelector(`[data-deal-card="${snapshot.storeId}"]`);
+      const cardRect = cardElem?.getBoundingClientRect();
+      const fromWidth = cardRect?.width ?? 260;
+      const fromHeight = cardRect?.height ?? 320;
+      const fromX = cardRect?.left ?? Math.max(20, (window.innerWidth - fromWidth) / 2);
+      const fromY = cardRect?.top ?? Math.max(60, (window.innerHeight - fromHeight) / 2 - 20);
+
+      // 3. Trigger Flight Animation diving into the bag!
+      const animationPromise = new Promise<void>(resolve => {
+        setFlight({
+          key: Date.now() + i,
+          from: { x: fromX, y: fromY, width: fromWidth, height: fromHeight },
+          to: { x: toX, y: toY },
+          itemName: snapshot.itemName,
+          category: snapshot.category,
+          priceZAR: snapshot.stickerPriceZAR,
+          tone: 'emerald',
+          onDone: () => {
+            setFlight(null);
+            bumpCorner('bag');
+            resolve();
+          }
+        });
+      });
+
+      // 4. Negotiate discount & execute payment autonomously via passkeys
+      const negotiatePromise = engine.negotiateAndBuy(snapshot, wish.targetMaxPriceZAR);
+
+      const [_, result] = await Promise.all([animationPromise, negotiatePromise]);
+
+      if (result.ok) {
+        const finalPrice = result.finalPriceZAR ?? snapshot.stickerPriceZAR;
+        // Update wishlist item in state & localStorage
+        setWishlist(prev => prev.map(w => w.id === wish.id ? {
+          ...w,
+          status: 'bought',
+          matchedPriceZAR: finalPrice,
+          matchedStoreName: snapshot.outletName,
+          matchedItemName: snapshot.itemName
+        } : w));
+
+        // Deduct from agent promo credit if balance exists
+        if (auth && auth.agentCreditBalanceZAR > 0) {
+          const newBalance = Math.max(0, auth.agentCreditBalanceZAR - finalPrice);
+          setAuth(prev => prev ? { ...prev, agentCreditBalanceZAR: newBalance } : null);
+        }
+
+        addLog('LLAMA_AGENT', `✓ Passkey Auto-Checkout: "${wish.query}" purchased at ${snapshot.outletName} for ${formatZAR(finalPrice)} (${result.discountPct}% bulk discount secured).`, 'success');
+      } else {
+        addLog('LLAMA_AGENT', `Could not complete auto-checkout for "${wish.query}": ${result.note}`, 'warning');
+      }
+
+      if (i < activeItems.length - 1) {
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
+
+    setIsBuyingWishlist(false);
+    setBuyingWishlistProgress('');
+    addLog('META_PAY', `🎉 Autonomous Wishlist Checkout Complete! All negotiated items safely delivered to your Bag.`, 'success');
+    buzz(400);
+    setSheet('bag');
+  }, [wishlist, isBuyingWishlist, page, navigate, engine, auth, bumpCorner, addLog]);
 
   useEffect(() => {
     if (dataSource !== 'demo' || !agentActive) return;
@@ -1318,6 +1438,37 @@ export default function App() {
                     {wishlist.filter(w => w.status === 'active').length}
                   </span>
                 </button>
+
+                {/* Buy Wishlist Autonomous Passkey Checkout Button */}
+                <button
+                  type="button"
+                  onClick={handleBuyWishlist}
+                  disabled={isBuyingWishlist}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black transition shadow-sm ${
+                    wishlist.filter(w => w.status === 'active').length > 0
+                      ? 'border-emerald-400/50 bg-gradient-to-r from-emerald-500 via-teal-500 to-amber-400 text-slate-950 hover:brightness-110 active:scale-95 shadow-emerald-500/20'
+                      : 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10'
+                  }`}
+                  title="Auto-buy all wishlist items with bulk AI discount using saved passkeys"
+                >
+                  {isBuyingWishlist ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-950" />
+                      <span className="truncate max-w-[130px]">{buyingWishlistProgress || 'Auto-Buying...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3.5 w-3.5 text-slate-950" />
+                      <span className="hidden min-[480px]:inline">Buy Wishlist</span>
+                      <span className="min-[480px]:hidden">Buy</span>
+                      {wishlist.filter(w => w.status === 'active').length > 0 && (
+                        <span className="rounded-full bg-slate-950/20 px-1.5 py-0.2 text-[10px] font-extrabold text-slate-950">
+                          {wishlist.filter(w => w.status === 'active').length}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
               </div>
             )}
           </div>
@@ -1480,6 +1631,7 @@ export default function App() {
         onClose={() => setIsWishlistModalOpen(false)}
         wishlist={wishlist}
         agentCreditBalanceZAR={auth?.agentCreditBalanceZAR ?? 1000}
+        onBuyWishlist={handleBuyWishlist}
         onAddWishlistItem={item => {
           const newItem: WishlistItem = {
             id: `wish_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
