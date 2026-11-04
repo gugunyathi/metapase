@@ -13,6 +13,9 @@ export interface CatalogProduct {
   imageUrl: string;
   description: string;
   tag: string;
+  isShopifyVirtual?: boolean;
+  fulfillmentMethod?: string;
+  shopifyDomain?: string;
 }
 
 export const REAL_PRODUCTS: CatalogProduct[] = [
@@ -464,6 +467,78 @@ export const REAL_PRODUCTS: CatalogProduct[] = [
     imageUrl: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=800&auto=format&fit=crop&q=80',
     description: 'Gallium Nitride technology powers a laptop, phone, and tablet all at the same time.',
     tag: 'High Speed GaN'
+  },
+
+  // =========================================================================
+  // VIRTUAL SHOPIFY PRESENCE PRODUCTS (TRANSIT HUBS & STADIUMS)
+  // =========================================================================
+  {
+    id: 'v_shopify_gs_apx_hd',
+    sku: 'GS-APX-HD-BL',
+    itemName: 'Apex Lifting Hoodie',
+    category: 'apparel',
+    mallId: 'park-station-transit',
+    storeId: 'v-shopify-gymshark',
+    storeName: 'Gymshark Virtual Presence',
+    stickerPriceZAR: 899,
+    floorRatio: 0.75, // Enforces 75% mathematical floor margin
+    imageUrl: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=800&auto=format&fit=crop&q=80',
+    description: 'High-performance hybrid workout wear tailored for high-intensity training with immediate localized hub dispatch.',
+    tag: 'Shopify Virtual Drop',
+    isShopifyVirtual: true,
+    fulfillmentMethod: 'DIGITAL_DELIVERY_RAILS',
+    shopifyDomain: 'gymshark.myshopify.com'
+  },
+  {
+    id: 'v_shopify_gs_sml_leg',
+    sku: 'GS-SML-LEG-GY',
+    itemName: 'Seamless Training Ribbed Leggings',
+    category: 'apparel',
+    mallId: 'park-station-transit',
+    storeId: 'v-shopify-gymshark',
+    storeName: 'Gymshark Virtual Presence',
+    stickerPriceZAR: 749,
+    floorRatio: 0.75,
+    imageUrl: 'https://images.unsplash.com/photo-1506629082955-511b1aa562c8?w=800&auto=format&fit=crop&q=80',
+    description: 'High-waist compressive fit gym leggings engineered for full range of motion.',
+    tag: 'Shopify Virtual Drop',
+    isShopifyVirtual: true,
+    fulfillmentMethod: 'DIGITAL_DELIVERY_RAILS',
+    shopifyDomain: 'gymshark.myshopify.com'
+  },
+  {
+    id: 'v_shopify_ck_elt_cp',
+    sku: 'CK-ELT-CP-GD',
+    itemName: 'Elite Streetwear Trucker Cap',
+    category: 'apparel',
+    mallId: 'fnb-stadium-hub',
+    storeId: 'v-shopify-culturekings',
+    storeName: 'Culture Kings Streetwear Hub',
+    stickerPriceZAR: 450,
+    floorRatio: 0.75,
+    imageUrl: 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=800&auto=format&fit=crop&q=80',
+    description: 'Limited drop premium custom headwear with high crown framing and stadium dispatch.',
+    tag: 'Shopify Virtual Drop',
+    isShopifyVirtual: true,
+    fulfillmentMethod: 'DIGITAL_DELIVERY_RAILS',
+    shopifyDomain: 'culturekings.myshopify.com'
+  },
+  {
+    id: 'v_shopify_ck_vtg_tee',
+    sku: 'CK-VTG-TEE-SL',
+    itemName: 'Vintage Heavyweight Graphic Oversized Tee',
+    category: 'apparel',
+    mallId: 'fnb-stadium-hub',
+    storeId: 'v-shopify-culturekings',
+    storeName: 'Culture Kings Streetwear Hub',
+    stickerPriceZAR: 599,
+    floorRatio: 0.75,
+    imageUrl: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
+    description: 'Acid wash heavy cotton boxy fit graphic tee inspired by 90s streetwear.',
+    tag: 'Shopify Virtual Drop',
+    isShopifyVirtual: true,
+    fulfillmentMethod: 'DIGITAL_DELIVERY_RAILS',
+    shopifyDomain: 'culturekings.myshopify.com'
   }
 ];
 

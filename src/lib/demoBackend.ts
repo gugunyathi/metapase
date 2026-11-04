@@ -134,7 +134,7 @@ const ping = async (payload: ProximityPingPayload): Promise<ProximityResponse | 
 
   return {
     resolvedLocation: {
-      mallId: node.id.startsWith('sc_') ? 'sandton_city' : node.id.startsWith('fw_') ? 'fourways_mall' : node.id.startsWith('ng_') ? 'northgate' : node.id.startsWith('ba_') ? 'bel_air' : 'sandton_city',
+      mallId: node.mallId ?? (node.id.startsWith('sc_') ? 'sandton_city' : node.id.startsWith('fw_') ? 'fourways_mall' : node.id.startsWith('ng_') ? 'northgate' : node.id.startsWith('ba_') ? 'bel_air' : 'sandton_city'),
       outletId: `outlet_${node.id}`,
       outletName: node.name
     },
@@ -143,7 +143,10 @@ const ping = async (payload: ProximityPingPayload): Promise<ProximityResponse | 
       sku: product.sku,
       itemName: product.itemName,
       stickerPriceZAR: product.stickerPriceZAR,
-      imageUrl: product.imageUrl
+      imageUrl: product.imageUrl,
+      isShopifyVirtual: node.isShopifyVirtual,
+      shopifyDomain: node.shopifyDomain,
+      fulfillmentMethod: node.isShopifyVirtual ? 'DIGITAL_DELIVERY_RAILS' : undefined
     }
   };
 };
@@ -162,6 +165,19 @@ const bargain = async (request: BargainRequest): Promise<BargainResponse> => {
   const session = sessions.get(request.sessionId);
   const lastCounter = session?.counterZAR ?? product.stickerPriceZAR;
   const round = (session?.rounds ?? 0) + 1;
+
+  // Virtual Shopify Presence margin protection guardrail
+  if (product.floorRatio === 0.75 || request.campaignId.includes('v_shopify') || request.campaignId.includes('v-shopify')) {
+    const nextStoreCounter = Math.round(floor + (product.stickerPriceZAR - floor) * 0.3);
+    sessions.set(request.sessionId, { counterZAR: nextStoreCounter, rounds: round });
+    return {
+      status: 'COUNTER_OFFER_PROPOSED',
+      finalPriceZAR: nextStoreCounter,
+      message: `Welcome to our virtual hub! We can't clear our digital supply chain floor at your offer, but our automated Shopify system can lock this item down for you at R${nextStoreCounter}.`,
+      engine: 'rules'
+    };
+  }
+
   let counter = Math.max(floor, Math.round(lastCounter - (lastCounter - request.agentOfferZAR) * COUNTER_STEP));
   // The store's Muse agent picks the counter and words it. Whatever comes back is clamped again here: never under the floor, never above the last counter.
   const muse = await museCounter({

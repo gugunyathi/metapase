@@ -149,6 +149,21 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
           </div>
         </section>
 
+        {deal.isShopifyVirtual && (
+          <div className="mt-4 flex items-center justify-between rounded-2xl border border-cyan-400/50 bg-cyan-950/40 p-3.5 text-cyan-200 shadow-[0_0_20px_rgba(34,211,238,0.2)]">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl">🌐</span>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">Shopify Virtual Presence</p>
+                <p className="text-[11px] text-cyan-400/80">Fulfilled via Shopify Localized Delivery Network</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-cyan-400/20 border border-cyan-400/40 px-2.5 py-1 text-[10px] font-mono font-bold text-cyan-300 animate-pulse">
+              Regional Transit Hub
+            </span>
+          </div>
+        )}
+
         <section className="mt-6">
           <p className="text-xs text-slate-400">{priceLabel}</p>
           <div className="mt-1 flex flex-wrap items-end gap-3">

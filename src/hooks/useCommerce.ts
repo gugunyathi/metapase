@@ -3,6 +3,9 @@ import { AppPreferences, CartLine, EngineEvent, ItemSnapshot, LogEntry, ParkedIt
 import { usePersistentState } from './usePersistentState';
 import { makeLocalId, pickSnapshot, snapshotOf } from '../lib/commerce';
 import { formatZAR } from '../lib/format';
+import { handleVirtualShopifySettlement } from '../lib/shopifyAdapter';
+
+export { handleVirtualShopifySettlement };
 
 type LogFn = (source: LogEntry['source'], message: string, type?: LogEntry['type']) => void;
 
@@ -96,13 +99,20 @@ export function useCommerce(onLog: LogFn): Commerce {
       return;
     }
     const item = pickSnapshot(event.snapshot);
-    setPurchases(prev => [{ ...item, id: makeLocalId('buy'), paidAt: now, priceZAR: event.priceZAR, referenceId: event.referenceId }, ...prev]);
+    const shopifySettlement = handleVirtualShopifySettlement(item.sku, item.storeId, 1);
+    const fulfillmentMethod = shopifySettlement?.fulfillmentMethod ?? item.fulfillmentMethod;
+    if (shopifySettlement) {
+      logRef.current('SYSTEM', `Shopify Virtual Delivery: Dispatched SKU ${item.sku}. Units remaining: ${shopifySettlement.remainingUnits}`, 'success');
+    }
+    setPurchases(prev => [{ ...item, id: makeLocalId('buy'), paidAt: now, priceZAR: event.priceZAR, referenceId: event.referenceId, fulfillmentMethod }, ...prev]);
     pushTimeline({
       kind: 'bought',
       at: now,
-      item,
+      item: { ...item, fulfillmentMethod },
       priceZAR: event.priceZAR,
-      note: event.priceZAR < item.stickerPriceZAR ? `Saved ${formatZAR(item.stickerPriceZAR - event.priceZAR)}${event.referenceId ? `, ref ${event.referenceId}` : ''}` : `Paid at sticker price${event.referenceId ? `, ref ${event.referenceId}` : ''}`
+      note: shopifySettlement
+        ? `Shopify Local Delivery: ${shopifySettlement.trackingMessage}`
+        : (event.priceZAR < item.stickerPriceZAR ? `Saved ${formatZAR(item.stickerPriceZAR - event.priceZAR)}${event.referenceId ? `, ref ${event.referenceId}` : ''}` : `Paid at sticker price${event.referenceId ? `, ref ${event.referenceId}` : ''}`)
     });
     setCartLines(prev => prev.filter(line => line.campaignId !== item.campaignId));
     setParked(prev => prev.filter(entry => entry.campaignId !== item.campaignId));

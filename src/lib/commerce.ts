@@ -7,7 +7,11 @@ export const snapshotOf = (deal: Deal): ItemSnapshot => ({
   itemName: deal.ad.itemName,
   outletName: deal.location.outletName,
   category: deal.category,
-  stickerPriceZAR: deal.ad.stickerPriceZAR
+  stickerPriceZAR: deal.ad.stickerPriceZAR,
+  imageUrl: deal.ad.imageUrl,
+  isShopifyVirtual: deal.isShopifyVirtual || (deal.ad as any).isShopifyVirtual,
+  shopifyDomain: deal.shopifyDomain || (deal.ad as any).shopifyDomain,
+  fulfillmentMethod: deal.fulfillmentMethod || (deal.ad as any).fulfillmentMethod
 });
 
 export const pickSnapshot = (item: ItemSnapshot): ItemSnapshot => ({
@@ -17,7 +21,11 @@ export const pickSnapshot = (item: ItemSnapshot): ItemSnapshot => ({
   itemName: item.itemName,
   outletName: item.outletName,
   category: item.category,
-  stickerPriceZAR: item.stickerPriceZAR
+  stickerPriceZAR: item.stickerPriceZAR,
+  imageUrl: item.imageUrl,
+  isShopifyVirtual: item.isShopifyVirtual,
+  shopifyDomain: item.shopifyDomain,
+  fulfillmentMethod: item.fulfillmentMethod
 });
 
 export const makeLocalId = (prefix: string): string => `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;

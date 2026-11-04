@@ -5,7 +5,8 @@ import { MALLS_DATABASE } from '../src/config/malls.js';
 import { REAL_PRODUCTS } from '../src/config/products.js';
 import { STORE_NODES } from '../src/config/venue.js';
 import { db, initDatabase, isDbConnected, DbUserSession, DbTransactionReceipt } from './db.js';
-import { handleMuseRequest, museMerchantCounter, museStatus } from './muse.js';
+import { handleMuseRequest, museMerchantCounter, museStatus, handleMuseBargainTransaction } from './muse.js';
+import { getShopifyVirtualCatalogue } from '../src/lib/shopifyAdapter.js';
 import { handleCreatePayPalOrder, handleCapturePayPalOrder, handleGetPayPalAuditLedger, handleParkOffer } from './routes/paypal.js';
 
 // Load .env before anything reads process.env (Node 22+). A missing file is fine: real environment variables still work.
@@ -40,6 +41,9 @@ interface AdCampaign {
   stickerPriceZAR: number;
   floorPriceZAR: number;
   imageUrl?: string;
+  isShopifyVirtual?: boolean;
+  shopifyDomain?: string;
+  fulfillmentMethod?: string;
 }
 
 interface BargainPayload { sessionId: string; campaignId: string; agentOfferZAR: number; rationale: string; }
@@ -119,6 +123,28 @@ const buildAllCampaigns = (): AdCampaign[] => {
     list.push({
       campaignId: `camp_${leg.outletId}_legacy`,
       ...leg
+    });
+  }
+
+  // Virtual Shopify Presence Campaigns (transit hubs, stadiums, pedestrian concourses)
+  const virtualCatalog = getShopifyVirtualCatalogue();
+  for (const vp of virtualCatalog) {
+    const hub = MALLS_DATABASE.find(m => m.id === vp.mallId);
+    list.push({
+      campaignId: `camp_${vp.id}`,
+      mallId: vp.mallId,
+      mallName: hub?.shortName ?? vp.mallName,
+      outletId: vp.outletId,
+      outletName: vp.storeName,
+      category: vp.category as Category,
+      sku: vp.sku,
+      itemName: vp.itemName,
+      stickerPriceZAR: vp.stickerPriceZAR,
+      floorPriceZAR: vp.floorPriceZAR,
+      imageUrl: vp.imageUrl,
+      isShopifyVirtual: true,
+      shopifyDomain: vp.shopifyDomain,
+      fulfillmentMethod: vp.fulfillmentMethod
     });
   }
 
@@ -373,6 +399,27 @@ const ROUTES: Record<string, RouteHandler> = {
 
     const lastCounter = session?.lastCounterZAR ?? campaign.stickerPriceZAR;
     const round = (session?.rounds ?? 0) + 1;
+
+    // Intercept virtual Shopify store calls to rigidly guard 75% baseline floor margins
+    const virtualIntercept = await handleMuseBargainTransaction({
+      outletId: campaign.outletId,
+      sku: campaign.sku,
+      shopperOffer: offer,
+      round
+    });
+
+    if (virtualIntercept) {
+      NEGOTIATIONS.set(payload.sessionId, { campaignId: campaign.campaignId, lastCounterZAR: virtualIntercept.counterPrice, rounds: round, updatedAt: Date.now() });
+      return [200, {
+        status: 'COUNTER_OFFER_PROPOSED',
+        finalPriceZAR: virtualIntercept.counterPrice,
+        message: virtualIntercept.message,
+        engine: 'rules',
+        isShopifyVirtual: true,
+        fulfillmentMethod: 'DIGITAL_DELIVERY_RAILS'
+      }];
+    }
+
     // The store's Muse agent chooses the counter and words it. The floor and the "never raise a price" rule are enforced in code.
     const muse = await museMerchantCounter({
       storeName: campaign.outletName,

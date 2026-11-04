@@ -2,7 +2,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { clampCounter, extractJson, handleMuseRequest, messageIsSafe, museMerchantCounter, museMerchantInsights, museParseIntent, museStatus, resetMuseStats, ruleParseIntent, readMuseConfig, type CounterInput, type MuseConfig } from './muse.js';
+import { clampCounter, extractJson, handleMuseRequest, messageIsSafe, museMerchantCounter, museMerchantInsights, museParseIntent, museStatus, resetMuseStats, ruleParseIntent, readMuseConfig, handleMuseBargainTransaction, type CounterInput, type MuseConfig } from './muse.js';
+import { handleVirtualShopifySettlement } from '../src/lib/shopifyAdapter.js';
 
 // A stand-in for the Muse API. `mode` decides how it misbehaves.
 let mode = 'good';
@@ -149,4 +150,27 @@ test('rate limiting kicks in', async () => {
   let last = 200;
   for (let i = 0; i < 45; i++) [last] = await handleMuseRequest('intent', 'POST', { text: 'a blazer' }, 'spammer', config);
   assert.equal(last, 429);
+});
+
+test('virtual Shopify store bargain enforces strict 75% baseline floor margin', async () => {
+  const result = await handleMuseBargainTransaction({
+    outletId: 'v-shopify-gymshark',
+    sku: 'GS-APX-HD-BL',
+    shopperOffer: 400, // below 75% floor (R674)
+    round: 1
+  });
+  assert.ok(result);
+  assert.equal(result.status, 'COUNTER_OFFER_PROPOSED');
+  assert.ok(result.counterPrice >= 674);
+  assert.ok(result.message.includes('virtual hub'));
+  assert.equal(result.isShopifyVirtual, true);
+  assert.equal(result.fulfillmentMethod, 'DIGITAL_DELIVERY_RAILS');
+});
+
+test('virtual Shopify checkout triggers inventory decrement webhook simulation', () => {
+  const settlement = handleVirtualShopifySettlement('GS-APX-HD-BL', 'v-shopify-gymshark', 2);
+  assert.ok(settlement);
+  assert.equal(settlement.fulfillmentMethod, 'DIGITAL_DELIVERY_RAILS');
+  assert.ok(settlement.trackingMessage.includes('Shopify Hub'));
+  assert.ok(typeof settlement.remainingUnits === 'number');
 });

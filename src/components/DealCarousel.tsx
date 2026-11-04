@@ -452,7 +452,12 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
                         <Navigation2 className="h-3.5 w-3.5 transition-transform duration-300" style={{ transform: `rotate(${relative}deg)` }} />
                         {formatDistance(item.distanceM)} {sideLabel(item, heading)}
                       </div>
-                      <div className={item.id === flashId ? 'metapase-flash rounded-3xl' : 'rounded-3xl'}>
+                      <div className={`relative ${item.id === flashId ? 'metapase-flash rounded-3xl' : 'rounded-3xl'}`}>
+                        {item.deal.isShopifyVirtual && (
+                          <span className="absolute top-2 right-2 z-20 flex items-center gap-1 bg-cyan-900 border border-cyan-400 text-cyan-200 text-xs px-2 py-0.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,211,238,0.5)]">
+                            <span>🌐</span> Shopify Tenant
+                          </span>
+                        )}
                         <DealCard
                           deal={item.deal}
                           reading={item.reading}

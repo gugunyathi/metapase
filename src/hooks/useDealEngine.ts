@@ -168,6 +168,7 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
           if (existing && existing.ad.campaignId === response.adContext.campaignId) {
             next[storeId] = { ...existing, location: response.resolvedLocation, ad: response.adContext, lastSeen: now };
           } else {
+            const isShopify = Boolean((response.adContext as any)?.isShopifyVirtual || reading.node.isShopifyVirtual);
             const fresh: Deal = {
               storeId,
               category: reading.node.category,
@@ -180,7 +181,10 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
               referenceId: null,
               firstSeen: now,
               lastSeen: now,
-              note: null
+              note: null,
+              isShopifyVirtual: isShopify,
+              shopifyDomain: (response.adContext as any)?.shopifyDomain || reading.node.shopifyDomain,
+              fulfillmentMethod: isShopify ? 'DIGITAL_DELIVERY_RAILS' : undefined
             };
             next[storeId] = fresh;
             discovered.push(fresh);

@@ -21,6 +21,7 @@
     "agent",
     "api",
     "scripts",
-    "src/config"
+    "src/config",
+    "src/lib/shopifyAdapter.ts"
   ]
 }

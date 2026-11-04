@@ -54,6 +54,8 @@ export interface MallInfo {
   gpsCenter: GeoPoint;
   geofenceRadiusM: number;
   stores: StoreNode[];
+  isVirtualHub?: boolean;
+  coordinates?: GeoPoint;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +164,146 @@ export const MALLS_DATABASE: MallInfo[] = [
     gpsCenter: { lat: -26.060278, lng: 27.957778 },
     geofenceRadiusM: 1500,
     stores: BEL_AIR_STORES
+  },
+  // High-traffic virtual transit hubs and stadiums
+  {
+    id: 'park-station-transit',
+    name: 'Park Station Transit Hub',
+    shortName: 'Park Station',
+    tagline: 'High-density intermodal transit & commuter commerce zone',
+    city: 'Johannesburg',
+    suburb: 'Braamfontein',
+    address: 'Rissik St, Johannesburg CBD, 2001',
+    websiteUrl: 'https://prasa.com',
+    gpsCenter: { lat: -26.1952, lng: 28.0432 },
+    coordinates: { lat: -26.1952, lng: 28.0432 },
+    geofenceRadiusM: 1500,
+    isVirtualHub: true,
+    stores: [
+      {
+        id: 'v-shopify-gymshark',
+        beaconUuid: 'e2c56db5-dffb-48d2-b060-d0f5a71096e0',
+        name: 'Gymshark Virtual Presence',
+        tagline: 'High-performance conditioning wear fulfilled via localized delivery',
+        category: 'apparel',
+        offsetEastM: 0,
+        offsetNorthM: 12,
+        floor: 1,
+        txPower: -59,
+        defaultRssi: -65,
+        isShopifyVirtual: true,
+        shopifyDomain: 'gymshark.myshopify.com',
+        mallId: 'park-station-transit',
+        mallName: 'Park Station Transit Hub'
+      }
+    ]
+  },
+  {
+    id: 'fnb-stadium-hub',
+    name: 'FNB Stadium (Zone A Hub)',
+    shortName: 'FNB Stadium',
+    tagline: 'Epic sports & entertainment stadium pedestrian concourse',
+    city: 'Johannesburg',
+    suburb: 'Nasrec',
+    address: 'Stadium Ave, Nasrec, Johannesburg, 2147',
+    websiteUrl: 'https://fnbstadium.org.za',
+    gpsCenter: { lat: -26.2348, lng: 27.9824 },
+    coordinates: { lat: -26.2348, lng: 27.9824 },
+    geofenceRadiusM: 2000,
+    isVirtualHub: true,
+    stores: [
+      {
+        id: 'v-shopify-culturekings',
+        beaconUuid: '74278bda-b644-4520-8f0c-720eaf059935',
+        name: 'Culture Kings Streetwear Hub',
+        tagline: 'Exclusive global streetwear drops with immediate local dispatch',
+        category: 'apparel',
+        offsetEastM: 15,
+        offsetNorthM: -5,
+        floor: 1,
+        txPower: -59,
+        defaultRssi: -68,
+        isShopifyVirtual: true,
+        shopifyDomain: 'culturekings.myshopify.com',
+        mallId: 'fnb-stadium-hub',
+        mallName: 'FNB Stadium (Zone A Hub)'
+      }
+    ]
+  },
+  {
+    id: 'sandton-gautrain-hub',
+    name: 'Sandton Gautrain Station',
+    shortName: 'Sandton Gautrain',
+    tagline: 'High-speed transit concourse connecting Sandton business district',
+    city: 'Sandton',
+    suburb: 'Sandhurst',
+    address: 'West St & Rivonia Rd, Sandton, 2196',
+    websiteUrl: 'https://gautrain.co.za',
+    gpsCenter: { lat: -26.1085, lng: 28.0575 },
+    coordinates: { lat: -26.1085, lng: 28.0575 },
+    geofenceRadiusM: 1200,
+    isVirtualHub: true,
+    stores: [
+      {
+        id: 'v-shopify-gymshark',
+        beaconUuid: 'e2c56db5-dffb-48d2-b060-d0f5a71096e0',
+        name: 'Gymshark Virtual Presence',
+        tagline: 'High-performance conditioning wear fulfilled via localized delivery',
+        category: 'apparel',
+        offsetEastM: -10,
+        offsetNorthM: 15,
+        floor: 1,
+        txPower: -59,
+        defaultRssi: -66,
+        isShopifyVirtual: true,
+        shopifyDomain: 'gymshark.myshopify.com',
+        mallId: 'sandton-gautrain-hub',
+        mallName: 'Sandton Gautrain Station'
+      }
+    ]
+  }
+];
+
+export const VIRTUAL_HUBS = [
+  {
+    id: "park-station-transit",
+    name: "Park Station Transit Hub",
+    city: "Johannesburg",
+    coordinates: { lat: -26.1952, lng: 28.0432 },
+    isVirtualHub: true
+  },
+  {
+    id: "fnb-stadium-hub",
+    name: "FNB Stadium (Zone A Hub)",
+    city: "Johannesburg",
+    coordinates: { lat: -26.2348, lng: 27.9824 },
+    isVirtualHub: true
+  },
+  {
+    id: "sandton-gautrain-hub",
+    name: "Sandton Gautrain Station",
+    city: "Sandton",
+    coordinates: { lat: -26.1085, lng: 28.0575 },
+    isVirtualHub: true
+  }
+];
+
+export const VIRTUAL_STORES = [
+  {
+    id: "v-shopify-gymshark",
+    name: "Gymshark Virtual Presence",
+    mallId: "park-station-transit",
+    category: "apparel" as const,
+    isShopifyVirtual: true,
+    shopifyDomain: "gymshark.myshopify.com"
+  },
+  {
+    id: "v-shopify-culturekings",
+    name: "Culture Kings Streetwear Hub",
+    mallId: "fnb-stadium-hub",
+    category: "apparel" as const,
+    isShopifyVirtual: true,
+    shopifyDomain: "culturekings.myshopify.com"
   }
 ];
 

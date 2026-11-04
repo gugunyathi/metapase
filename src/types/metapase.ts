@@ -20,6 +20,9 @@ export interface ProximityResponse {
     itemName: string;
     stickerPriceZAR: number;
     imageUrl?: string;
+    isShopifyVirtual?: boolean;
+    shopifyDomain?: string;
+    fulfillmentMethod?: string;
   };
 }
 
@@ -63,6 +66,10 @@ export interface StoreNode {
   floor: number;
   txPower: number;
   defaultRssi: number;
+  isShopifyVirtual?: boolean;
+  shopifyDomain?: string;
+  mallId?: string;
+  mallName?: string;
 }
 
 export interface PlacedStore extends StoreNode {
@@ -163,6 +170,9 @@ export interface Deal {
   firstSeen: number;
   lastSeen: number;
   note: string | null;
+  isShopifyVirtual?: boolean;
+  shopifyDomain?: string;
+  fulfillmentMethod?: string;
 }
 
 export interface EngineStats {
@@ -191,6 +201,9 @@ export interface ItemSnapshot {
   category: DealCategory;
   stickerPriceZAR: number;
   imageUrl?: string;
+  isShopifyVirtual?: boolean;
+  shopifyDomain?: string;
+  fulfillmentMethod?: string;
 }
 
 export interface ParkedItem extends ItemSnapshot {
@@ -222,6 +235,7 @@ export interface Purchase extends ItemSnapshot {
   paidAt: number;
   priceZAR: number;
   referenceId: string | null;
+  fulfillmentMethod?: string;
 }
 
 export type TimelineKind = 'wishlist' | 'bought' | 'promotion';

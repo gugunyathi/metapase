@@ -119,6 +119,11 @@ export default function DealCard({ deal, reading, heading, selected, matchesInte
             <Icon className="absolute -bottom-5 -right-4 h-32 w-32 text-white/15" strokeWidth={1.25} />
           </div>
         )}
+        {deal.isShopifyVirtual && (
+          <span className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-cyan-950/90 border border-cyan-400 text-cyan-200 text-[11px] px-2 py-0.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,211,238,0.5)] backdrop-blur">
+            <span>🌐</span> Shopify Tenant
+          </span>
+        )}
         <span className="absolute left-4 top-4 max-w-[55%] truncate rounded-full border border-white/10 bg-black/60 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">{deal.location.outletName}</span>
         <span className="absolute right-4 top-4 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/10 bg-black/60 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">
           <Navigation2 className="h-3.5 w-3.5 text-emerald-300 transition-transform duration-300" style={{ transform: `rotate(${relative ?? 0}deg)` }} />

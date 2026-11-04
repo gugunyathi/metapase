@@ -10,6 +10,8 @@
  * The API key is read from MODEL_API_KEY (or MUSE_API_KEY) on the server only. It is never sent to the browser.
  */
 
+import { getShopifyVirtualCatalogue } from '../src/lib/shopifyAdapter.js';
+
 export interface MuseConfig {
   apiKey: string;
   baseUrl: string;
@@ -236,6 +238,40 @@ export const messageIsSafe = (message: string, input: CounterInput, counterZAR: 
 
 const templateMessage = (input: CounterInput, counterZAR: number): string =>
   `We can do R${counterZAR} on the ${input.itemName}.`;
+
+/**
+ * Intercepts negotiation calls for virtual Shopify stores to rigidly isolate Muse AI
+ * and enforce the strict 75% calculated baseline floor criteria.
+ */
+export async function handleMuseBargainTransaction(payload: any) {
+  const { outletId, sku, shopperOffer } = payload;
+  
+  // Dynamic lookup targeting the virtual shopify product cache
+  const virtualCatalogue = getShopifyVirtualCatalogue();
+  const matchedVirtualItem = virtualCatalogue.find(p => p.sku === sku && (p.outletId === outletId || p.storeId === outletId));
+  
+  if (matchedVirtualItem) {
+    // Rigid code fallback overriding AI to protect margins
+    if (shopperOffer < matchedVirtualItem.floorPriceZAR) {
+      const nextStoreCounter = Math.round(
+        matchedVirtualItem.floorPriceZAR + (matchedVirtualItem.stickerPriceZAR - matchedVirtualItem.floorPriceZAR) * 0.3
+      );
+      
+      return {
+        counterPrice: nextStoreCounter,
+        counterZAR: nextStoreCounter,
+        message: `Welcome to our virtual hub! We can't clear our digital supply chain floor at your offer, but our automated Shopify system can lock this item down for you at R${nextStoreCounter}.`,
+        status: "COUNTER_OFFER_PROPOSED",
+        engine: "rules" as const,
+        isShopifyVirtual: true,
+        fulfillmentMethod: "DIGITAL_DELIVERY_RAILS"
+      };
+    }
+  }
+  
+  // Otherwise, fall back cleanly to your traditional Muse Spark retail engine code block...
+  return null;
+}
 
 export async function museMerchantCounter(input: CounterInput, config?: MuseConfig | null): Promise<CounterResult> {
   const fallback = (): CounterResult => {
