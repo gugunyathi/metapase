@@ -1,0 +1,45 @@
+{
+  "version": 1.1,
+  "atDirectives": [
+    {
+      "name": "@tailwind",
+      "description": "Tailwind CSS base directive. Use `@tailwind base`, `@tailwind components`, or `@tailwind utilities` to inject Tailwind's styles."
+    },
+    {
+      "name": "@source",
+      "description": "Tailwind CSS v4: tells the engine which directories/files to scan for class names."
+    },
+    {
+      "name": "@theme",
+      "description": "Tailwind CSS v4: defines design tokens (colors, spacing, fonts, etc.) as CSS custom properties."
+    },
+    {
+      "name": "@utility",
+      "description": "Tailwind CSS v4: registers a custom utility class."
+    },
+    {
+      "name": "@custom-variant",
+      "description": "Tailwind CSS v4: registers a custom variant (e.g. `dark`, `hover`, `focus`)."
+    },
+    {
+      "name": "@apply",
+      "description": "Tailwind CSS: applies a set of utility classes inline inside a CSS rule."
+    },
+    {
+      "name": "@layer",
+      "description": "Tailwind CSS: adds styles to a specific Tailwind layer (base, components, utilities)."
+    },
+    {
+      "name": "@config",
+      "description": "Tailwind CSS v4: points to an external Tailwind config file."
+    },
+    {
+      "name": "@plugin",
+      "description": "Tailwind CSS v4: loads a Tailwind plugin."
+    },
+    {
+      "name": "@variant",
+      "description": "Tailwind CSS v4: applies a variant to styles inside a block."
+    }
+  ]
+}
