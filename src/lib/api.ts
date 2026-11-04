@@ -208,6 +208,52 @@ export interface ApiCreditSummary {
   plans: ApiInstallmentPlan[];
 }
 
+export interface ApiUserSession {
+  userId: string;
+  userName?: string;
+  email?: string;
+  agentId?: string;
+  agentName?: string;
+  agentCreditBalanceZAR?: number;
+  currentIntent: string;
+  maxBudgetZAR: number;
+  activeMallId?: string;
+  deviceProfile?: string;
+  parkedItems?: Array<{
+    id: string;
+    storeId: string;
+    campaignId: string;
+    sku: string;
+    itemName: string;
+    outletName: string;
+    category: string;
+    priceZAR: number;
+    reason?: string;
+    parkedAt: number;
+  }>;
+  bagItems?: Array<{
+    id: string;
+    storeId: string;
+    campaignId: string;
+    sku: string;
+    itemName: string;
+    outletName: string;
+    category: string;
+    priceZAR: number;
+    addedAt: number;
+  }>;
+  matches?: Array<{
+    storeId: string;
+    campaignId: string;
+    sku: string;
+    itemName: string;
+    outletName: string;
+    status: string;
+    negotiatedPriceZAR?: number | null;
+  }>;
+  updatedAt?: number;
+}
+
 export interface ApiTransactionReceipt {
   receiptId: string;
   voucherCode: string;
@@ -319,7 +365,15 @@ const liveApi = {
   getCreditPlans: (userId = 'user_shopper_01') =>
     getJson<ApiCreditSummary>(`/api/user/credit-plans?userId=${encodeURIComponent(userId)}`),
   payInstallment: (planId: string) =>
-    postJson<{ ok: boolean; message: string; plan: ApiInstallmentPlan }>(`/api/user/credit-plans/${planId}/pay`, {})
+    postJson<{ ok: boolean; message: string; plan: ApiInstallmentPlan }>(`/api/user/credit-plans/${planId}/pay`, {}),
+
+  // User & Agent Shopping Sessions
+  getUserSession: (userId = 'user_shopper_01') =>
+    getJson<{ ok: boolean; session: ApiUserSession }>(`/api/user/session?userId=${encodeURIComponent(userId)}`),
+  saveUserSession: (session: ApiUserSession) =>
+    postJson<{ success: boolean; session: ApiUserSession }>('/api/user/session', session),
+  getUserSessions: () =>
+    getJson<{ ok: boolean; count: number; sessions: ApiUserSession[] }>('/api/user/sessions')
 };
 
 // ==========================================
@@ -452,5 +506,26 @@ export const api = {
       /* no server: fall through to the in-browser store */
     }
     return { agent: demoCreateAgent({ userId: input.userId, agentName: input.agentName }), source: answered('demo', 'demo') };
-  }
+  },
+
+  getUserSession: (userId?: string) =>
+    viaLive(
+      () => liveApi.getUserSession(userId),
+      () => ({
+        ok: true,
+        session: {
+          userId: demoUserId(userId),
+          currentIntent: 'any',
+          maxBudgetZAR: 1500,
+          parkedItems: [],
+          bagItems: [],
+          matches: []
+        }
+      })
+    ),
+  saveUserSession: (session: ApiUserSession) =>
+    viaLivePost(
+      () => liveApi.saveUserSession(session),
+      () => okResult({ success: true, session })
+    )
 };

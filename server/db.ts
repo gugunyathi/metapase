@@ -35,6 +35,52 @@ export interface DbPersonalAgent {
   updatedAt: number;
 }
 
+export interface DbUserSession {
+  userId: string;
+  userName?: string;
+  email?: string;
+  agentId?: string;
+  agentName?: string;
+  agentCreditBalanceZAR?: number;
+  currentIntent: string;
+  maxBudgetZAR: number;
+  activeMallId?: string;
+  deviceProfile?: string;
+  parkedItems: Array<{
+    id: string;
+    storeId: string;
+    campaignId: string;
+    sku: string;
+    itemName: string;
+    outletName: string;
+    category: string;
+    priceZAR: number;
+    reason?: string;
+    parkedAt: number;
+  }>;
+  bagItems: Array<{
+    id: string;
+    storeId: string;
+    campaignId: string;
+    sku: string;
+    itemName: string;
+    outletName: string;
+    category: string;
+    priceZAR: number;
+    addedAt: number;
+  }>;
+  matches: Array<{
+    storeId: string;
+    campaignId: string;
+    sku: string;
+    itemName: string;
+    outletName: string;
+    status: string;
+    negotiatedPriceZAR?: number | null;
+  }>;
+  updatedAt: number;
+}
+
 export interface DbWishlistItem {
   id: string;
   userId: string;
@@ -177,6 +223,7 @@ class InMemoryDb {
   public stores = new Map<string, DbMerchantStore>();
   public inventory = new Map<string, DbProductInventory>();
   public creditPlans = new Map<string, DbInstallmentPlan>();
+  public sessions = new Map<string, DbUserSession>();
   public activities: DbActivityLog[] = [];
 
   constructor() {
@@ -201,6 +248,25 @@ class InMemoryDb {
       updatedAt: Date.now()
     };
     this.agents.set(defaultAgent.agentId, defaultAgent);
+
+    // Seed initial user session
+    const defaultSession: DbUserSession = {
+      userId: defaultUser.userId,
+      userName: defaultUser.userName,
+      email: defaultUser.email,
+      agentId: defaultAgent.agentId,
+      agentName: defaultAgent.agentName,
+      agentCreditBalanceZAR: defaultAgent.creditBalanceZAR,
+      currentIntent: 'any',
+      maxBudgetZAR: 1500,
+      activeMallId: 'sandton_city',
+      deviceProfile: 'desktop',
+      parkedItems: [],
+      bagItems: [],
+      matches: [],
+      updatedAt: Date.now()
+    };
+    this.sessions.set(defaultUser.userId, defaultSession);
 
     // Seed initial wishlist
     const wish1: DbWishlistItem = {
@@ -444,6 +510,7 @@ export async function initDatabase(): Promise<{ mode: 'mongodb' | 'in_memory'; d
       await mongoDb.collection('activities').createIndex({ timestamp: -1 });
       await mongoDb.collection('credit_plans').createIndex({ planId: 1 }, { unique: true });
       await mongoDb.collection('credit_plans').createIndex({ userId: 1 });
+      await mongoDb.collection('sessions').createIndex({ userId: 1 }, { unique: true });
 
       // Upsert stores and inventory so all real catalog assets are always present
       for (const store of inMemoryDb.stores.values()) {
@@ -495,6 +562,13 @@ export async function initDatabase(): Promise<{ mode: 'mongodb' | 'in_memory'; d
       if (planCount === 0) {
         for (const p of inMemoryDb.creditPlans.values()) {
           await mongoDb.collection('credit_plans').insertOne(p);
+        }
+      }
+
+      const sessionCount = await mongoDb.collection('sessions').countDocuments();
+      if (sessionCount === 0) {
+        for (const s of inMemoryDb.sessions.values()) {
+          await mongoDb.collection('sessions').insertOne(s);
         }
       }
 
@@ -885,6 +959,34 @@ export const db = {
         activePlansCount,
         plans
       };
+    }
+  },
+
+  // USER & AGENT SHOPPING SESSIONS
+  sessions: {
+    async findByUserId(userId: string): Promise<DbUserSession | null> {
+      if (isConnected && mongoDb) {
+        return (await mongoDb.collection('sessions').findOne({ userId })) as DbUserSession | null;
+      }
+      return inMemoryDb.sessions.get(userId) ?? null;
+    },
+    async save(session: DbUserSession): Promise<DbUserSession> {
+      session.updatedAt = Date.now();
+      if (isConnected && mongoDb) {
+        await mongoDb.collection('sessions').updateOne(
+          { userId: session.userId },
+          { $set: session },
+          { upsert: true }
+        );
+      }
+      inMemoryDb.sessions.set(session.userId, session);
+      return session;
+    },
+    async list(): Promise<DbUserSession[]> {
+      if (isConnected && mongoDb) {
+        return (await mongoDb.collection('sessions').find({}).sort({ updatedAt: -1 }).toArray()) as unknown as DbUserSession[];
+      }
+      return Array.from(inMemoryDb.sessions.values()).sort((a, b) => b.updatedAt - a.updatedAt);
     }
   }
 };

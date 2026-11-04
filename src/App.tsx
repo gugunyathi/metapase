@@ -12,7 +12,7 @@ import { useDeviceProfile } from './hooks/useDeviceProfile';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useHeading } from './hooks/useHeading';
 import { matchesIntent, useDealEngine } from './hooks/useDealEngine';
-import { DEFAULT_DATA_SOURCE } from './lib/api';
+import { api, DEFAULT_DATA_SOURCE } from './lib/api';
 import type { CompassTarget, CompassTone } from './components/Compass';
 import DigitalCompassBar from './components/DigitalCompassBar';
 import DealCarousel, { PinRequest } from './components/DealCarousel';
@@ -594,6 +594,58 @@ export default function App() {
   useEffect(() => {
     purchaseCountRef.current = commerce.purchases.length;
   }, [commerce.purchases.length]);
+
+  // Sync user & agent shopping sessions (intents, budget, venue, profile, parked, bag, matches) to backend/database
+  useEffect(() => {
+    const userId = auth?.userId || 'user_shopper_01';
+    const timer = setTimeout(() => {
+      void api.saveUserSession({
+        userId,
+        userName: auth?.userName,
+        email: auth?.email,
+        agentId: auth?.agentId,
+        agentName: auth?.agentName,
+        agentCreditBalanceZAR: auth?.agentCreditBalanceZAR,
+        currentIntent: intent,
+        maxBudgetZAR,
+        activeMallId,
+        deviceProfile: activeView,
+        parkedItems: commerce.parked.map(p => ({
+          id: p.id,
+          storeId: p.storeId,
+          campaignId: p.campaignId,
+          sku: p.sku,
+          itemName: p.itemName,
+          outletName: p.outletName,
+          category: p.category,
+          priceZAR: p.lastStorePriceZAR,
+          reason: p.reason,
+          parkedAt: p.parkedAt
+        })),
+        bagItems: commerce.cartLines.map(b => ({
+          id: b.id,
+          storeId: b.storeId,
+          campaignId: b.campaignId,
+          sku: b.sku,
+          itemName: b.itemName,
+          outletName: b.outletName,
+          category: b.category,
+          priceZAR: b.priceZAR,
+          addedAt: b.addedAt
+        })),
+        matches: Object.values(engine.deals).map(d => ({
+          storeId: d.storeId,
+          campaignId: d.ad.campaignId,
+          sku: d.ad.sku,
+          itemName: d.ad.itemName,
+          outletName: d.location.outletName,
+          status: d.status,
+          negotiatedPriceZAR: d.negotiatedPriceZAR
+        }))
+      });
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [auth, intent, maxBudgetZAR, activeMallId, activeView, commerce.parked, commerce.cartLines, engine.deals]);
 
   const simulateShoppingRun = useCallback(() => {
     if (dataSource !== 'demo') return;

@@ -4,7 +4,7 @@ import { getAllMerchantAgents, getMerchantAgent } from '../agent/merchantAgents.
 import { MALLS_DATABASE } from '../src/config/malls.js';
 import { REAL_PRODUCTS } from '../src/config/products.js';
 import { STORE_NODES } from '../src/config/venue.js';
-import { db, initDatabase, isDbConnected } from './db.js';
+import { db, initDatabase, isDbConnected, DbUserSession, DbTransactionReceipt } from './db.js';
 import { handleMuseRequest, museMerchantCounter, museStatus } from './muse.js';
 
 // Load .env before anything reads process.env (Node 22+). A missing file is fine: real environment variables still work.
@@ -266,10 +266,18 @@ const readClientData = (encoded: string, expectedType: 'webauthn.create' | 'weba
   return { raw, challenge: data.challenge };
 };
 
-const verifyPasskeyAssertion = (transactionToken: string, auth: AuthPayload): void => {
+const verifyPasskeyAssertion = async (transactionToken: string, auth: AuthPayload): Promise<void> => {
   const { credentialId, clientDataJSON, authenticatorData, signature } = auth;
   if (!credentialId || !clientDataJSON || !authenticatorData || !signature) throw new HttpError(400, 'INCOMPLETE_ASSERTION', 'Passkey assertion is missing fields.');
-  const passkey = PASSKEYS.get(credentialId);
+  let passkey = PASSKEYS.get(credentialId);
+  if (!passkey) {
+    const dbKey = await db.passkeys.findById(credentialId);
+    if (dbKey) {
+      const spkiBuf = fromB64u(dbKey.publicKeySpki);
+      passkey = { publicKeySpki: spkiBuf, algorithm: dbKey.algorithm, createdAt: dbKey.createdAt };
+      PASSKEYS.set(credentialId, passkey);
+    }
+  }
   if (!passkey) throw new HttpError(401, 'UNKNOWN_CREDENTIAL', 'This passkey is not registered with the server.');
   const { raw, challenge } = readClientData(clientDataJSON, 'webauthn.get');
   consumeChallenge(challenge, 'pay', transactionToken);
@@ -384,6 +392,17 @@ const ROUTES: Record<string, RouteHandler> = {
     const spkiBuf = fromB64u(payload.publicKeySpki);
     createPublicKey({ key: spkiBuf, format: 'der', type: 'spki' });
     PASSKEYS.set(payload.credentialId, { publicKeySpki: spkiBuf, algorithm: payload.algorithm, createdAt: Date.now() });
+    try {
+      await db.passkeys.save({
+        credentialId: payload.credentialId,
+        userId: (req.headers['x-user-id'] as string) || 'user_shopper_01',
+        publicKeySpki: payload.publicKeySpki,
+        algorithm: payload.algorithm,
+        createdAt: Date.now()
+      });
+    } catch (err) {
+      console.warn('[Passkeys] Failed to persist passkey to database:', err);
+    }
     return [200, { status: 'REGISTERED', credentialId: payload.credentialId }];
   },
 
@@ -401,7 +420,7 @@ const ROUTES: Record<string, RouteHandler> = {
     let verified = false;
 
     if (mechanism === 'meta_pay_passkey') {
-      verifyPasskeyAssertion(payload.transactionToken, payload.authPayload);
+      await verifyPasskeyAssertion(payload.transactionToken, payload.authPayload);
       verified = true;
     } else if (mechanism === 'meta_pay_sandbox') {
       if (!ALLOW_SANDBOX_PAY) throw new HttpError(403, 'SANDBOX_DISABLED', 'Sandbox payment is disabled on this server.');
@@ -411,10 +430,52 @@ const ROUTES: Record<string, RouteHandler> = {
 
     TOKENS.delete(payload.transactionToken);
     const referenceId = `MP-${randomBytes(6).toString('hex').toUpperCase()}`;
+    const campaign = CAMPAIGNS.find(item => item.campaignId === tokenEntry.campaignId);
+    const buyerUserId = (req.headers['x-user-id'] as string) || (payload as unknown as Record<string, unknown>)?.userId as string || 'user_shopper_01';
+
+    const receipt: DbTransactionReceipt = {
+      receiptId: `rcpt_${randomBytes(6).toString('hex')}`,
+      voucherCode: referenceId,
+      userId: buyerUserId,
+      storeId: campaign?.outletId ?? 'unknown_store',
+      storeName: campaign?.outletName ?? 'Store',
+      mallId: campaign?.mallId ?? 'sandton_city',
+      mallName: campaign?.mallName ?? 'Sandton City',
+      sku: campaign?.sku ?? 'UNKNOWN_SKU',
+      itemName: campaign?.itemName ?? 'Item',
+      amountZAR: tokenEntry.priceZAR,
+      savingsZAR: campaign ? Math.max(0, campaign.stickerPriceZAR - tokenEntry.priceZAR) : 0,
+      purchasedBy: mechanism === 'meta_pay_passkey' ? 'manual_user_checkout' : 'autonomous_personal_agent',
+      timestamp: new Date().toISOString(),
+      authorizationRef: `AUTH_${randomBytes(6).toString('hex').toUpperCase()}`,
+      qrPayload: `metapase://voucher?code=${referenceId}&store=${campaign?.outletId}&amount=${tokenEntry.priceZAR}`,
+      status: 'ISSUED'
+    };
+
+    try {
+      await db.transactions.save(receipt);
+      if (campaign?.sku) {
+        await db.inventory.decrementStock(campaign.sku, 1);
+      }
+      await db.activities.log({
+        type: receipt.purchasedBy === 'autonomous_personal_agent' ? 'AUTONOMOUS_PURCHASE' : 'MANUAL_PURCHASE',
+        actor: receipt.purchasedBy === 'autonomous_personal_agent' ? 'PERSONAL_AGENT' : 'USER',
+        userId: buyerUserId,
+        storeId: receipt.storeId,
+        storeName: receipt.storeName,
+        mallId: receipt.mallId,
+        summary: `${receipt.purchasedBy === 'autonomous_personal_agent' ? 'Autonomous agent' : 'User'} purchased ${receipt.itemName} at ${receipt.storeName} for R${receipt.amountZAR} (Saved R${receipt.savingsZAR})`,
+        details: { receiptId: receipt.receiptId, voucherCode: referenceId, sku: receipt.sku, amountZAR: receipt.amountZAR }
+      });
+    } catch (err) {
+      console.warn('[Transactions] Could not persist receipt to db:', err);
+    }
+
     return [200, {
       status: 'SETTLED',
       success: true,
       referenceId,
+      receipt,
       amountZAR: tokenEntry.priceZAR,
       campaignId: tokenEntry.campaignId,
       verified
@@ -458,6 +519,11 @@ const ROUTES: Record<string, RouteHandler> = {
       'POST /api/merchants/manual-buy',
       'GET /api/user/agent',
       'POST /api/user/agent/credit',
+      'GET /api/user/profile',
+      'POST /api/user/profile',
+      'GET /api/user/session',
+      'POST /api/user/session',
+      'GET /api/user/sessions',
       'GET /api/user/wishlist',
       'POST /api/user/wishlist',
       'DELETE /api/user/wishlist/:id',
@@ -977,6 +1043,165 @@ const ROUTES: Record<string, RouteHandler> = {
       await db.agents.upsert(agent);
       return [200, { success: true, balanceZAR: agent.creditBalanceZAR }];
     }
+  },
+
+  // USER PROFILE
+  'GET /api/user/profile': async req => {
+    const queryUserId = new URL(req.url ?? '', 'http://localhost').searchParams.get('userId');
+    const userId = (req.headers['x-user-id'] as string) || queryUserId || 'user_shopper_01';
+    let user = await db.users.findById(userId);
+    if (!user) {
+      user = await db.users.upsert({
+        userId,
+        userName: 'MetaPase Shopper',
+        email: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
+    return [200, { ok: true, user }];
+  },
+
+  'POST /api/user/profile': async req => {
+    const payload = await parseJsonBody<{ userId?: string; userName: string; email?: string }>(req);
+    const userId = payload?.userId || (req.headers['x-user-id'] as string) || 'user_shopper_01';
+    const now = Date.now();
+    const user = await db.users.upsert({
+      userId,
+      userName: payload?.userName || 'MetaPase Shopper',
+      email: payload?.email || '',
+      createdAt: now,
+      updatedAt: now
+    });
+    return [200, { success: true, user }];
+  },
+
+  // USER & AGENT SHOPPING SESSION (Intent, Budget, Venue, Parked items, Bag items, Matches)
+  'GET /api/user/session': async req => {
+    const queryUserId = new URL(req.url ?? '', 'http://localhost').searchParams.get('userId');
+    const userId = (req.headers['x-user-id'] as string) || queryUserId || 'user_shopper_01';
+    let session = await db.sessions.findByUserId(userId);
+    if (!session) {
+      const user = await db.users.findById(userId);
+      const agent = await db.agents.findByUserId(userId);
+      session = await db.sessions.save({
+        userId,
+        userName: user?.userName ?? 'MetaPase Shopper',
+        email: user?.email ?? '',
+        agentId: agent?.agentId ?? `agent_${userId}`,
+        agentName: agent?.agentName ?? 'Personal Muse Agent',
+        agentCreditBalanceZAR: agent?.creditBalanceZAR ?? 1000,
+        currentIntent: 'any',
+        maxBudgetZAR: 1500,
+        activeMallId: 'sandton_city',
+        deviceProfile: 'desktop',
+        parkedItems: [],
+        bagItems: [],
+        matches: [],
+        updatedAt: Date.now()
+      });
+    }
+    return [200, { ok: true, session }];
+  },
+
+  'POST /api/user/session': async req => {
+    const payload = await parseJsonBody<{
+      userId?: string;
+      userName?: string;
+      email?: string;
+      agentId?: string;
+      agentName?: string;
+      agentCreditBalanceZAR?: number;
+      currentIntent?: string;
+      maxBudgetZAR?: number;
+      activeMallId?: string;
+      deviceProfile?: string;
+      parkedItems?: Array<{
+        id: string;
+        storeId: string;
+        campaignId: string;
+        sku: string;
+        itemName: string;
+        outletName: string;
+        category: string;
+        priceZAR: number;
+        reason?: string;
+        parkedAt: number;
+      }>;
+      bagItems?: Array<{
+        id: string;
+        storeId: string;
+        campaignId: string;
+        sku: string;
+        itemName: string;
+        outletName: string;
+        category: string;
+        priceZAR: number;
+        addedAt: number;
+      }>;
+      matches?: Array<{
+        storeId: string;
+        campaignId: string;
+        sku: string;
+        itemName: string;
+        outletName: string;
+        status: string;
+        negotiatedPriceZAR?: number | null;
+      }>;
+    }>(req);
+
+    const userId = payload?.userId || (req.headers['x-user-id'] as string) || 'user_shopper_01';
+    const now = Date.now();
+
+    const session: DbUserSession = {
+      userId,
+      userName: payload?.userName,
+      email: payload?.email,
+      agentId: payload?.agentId,
+      agentName: payload?.agentName,
+      agentCreditBalanceZAR: payload?.agentCreditBalanceZAR,
+      currentIntent: payload?.currentIntent ?? 'any',
+      maxBudgetZAR: payload?.maxBudgetZAR ?? 1500,
+      activeMallId: payload?.activeMallId ?? 'sandton_city',
+      deviceProfile: payload?.deviceProfile ?? 'desktop',
+      parkedItems: Array.isArray(payload?.parkedItems) ? payload.parkedItems : [],
+      bagItems: Array.isArray(payload?.bagItems) ? payload.bagItems : [],
+      matches: Array.isArray(payload?.matches) ? payload.matches : [],
+      updatedAt: now
+    };
+
+    const saved = await db.sessions.save(session);
+
+    if (payload?.userName) {
+      await db.users.upsert({
+        userId,
+        userName: payload.userName,
+        email: payload.email ?? '',
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    if (payload?.agentName) {
+      const existingAgent = await db.agents.findByUserId(userId);
+      await db.agents.upsert({
+        agentId: payload.agentId || existingAgent?.agentId || `agent_${userId}`,
+        userId,
+        agentName: payload.agentName,
+        creditBalanceZAR: payload.agentCreditBalanceZAR ?? existingAgent?.creditBalanceZAR ?? 1000,
+        promoCode: existingAgent?.promoCode ?? 'WELCOME-R1000-ACTIVE',
+        delegationScope: existingAgent?.delegationScope ?? ['browse', 'bargain', 'transact'],
+        createdAt: existingAgent?.createdAt ?? now,
+        updatedAt: now
+      });
+    }
+
+    return [200, { success: true, session: saved }];
+  },
+
+  'GET /api/user/sessions': async () => {
+    const sessions = await db.sessions.list();
+    return [200, { ok: true, count: sessions.length, sessions }];
   },
 
   'GET /api/user/wishlist': async req => {
