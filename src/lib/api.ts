@@ -251,6 +251,18 @@ export interface ApiUserSession {
     status: string;
     negotiatedPriceZAR?: number | null;
   }>;
+  purchasedItems?: Array<{
+    id: string;
+    storeId: string;
+    campaignId: string;
+    sku: string;
+    itemName: string;
+    outletName: string;
+    category: string;
+    priceZAR: number;
+    referenceId?: string | null;
+    paidAt: number;
+  }>;
   updatedAt?: number;
 }
 

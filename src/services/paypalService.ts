@@ -6,6 +6,10 @@
  * Handles ZAR-to-USD currency normalization and zero-click vaulted agent execution.
  */
 
+import { API_BASE } from "../lib/api";
+
+const getEndpoint = (path: string) => `${API_BASE.replace(/\/$/, '')}${path}`;
+
 import type {
   A2AMessage,
   A2APayPalOrderResponse,
@@ -77,7 +81,7 @@ export async function createAgentTransaction(
   let orderId = `ORD-SANDBOX-${storeId.substring(0, 4).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
   try {
-    const res = await fetch("/api/paypal/create-order", {
+    const res = await fetch(getEndpoint("/api/paypal/create-order"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -145,7 +149,7 @@ export async function executeVaultedAgentPayment(
   const settledAt = new Date().toISOString();
 
   try {
-    const res = await fetch("/api/paypal/checkout-settle", {
+    const res = await fetch(getEndpoint("/api/paypal/checkout-settle"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -204,7 +208,7 @@ export async function executeVaultedAgentPayment(
  */
 export async function fetchMallDirectoryFromApi(): Promise<unknown[]> {
   try {
-    const res = await fetch("/api/mall/directory");
+    const res = await fetch(getEndpoint("/api/mall/directory"));
     if (res.ok) {
       return await res.json();
     }
@@ -218,7 +222,7 @@ export async function fetchMallDirectoryFromApi(): Promise<unknown[]> {
  * Sends an A2A negotiation packet to /api/agent/negotiate
  */
 export async function sendA2ANegotiationToApi(message: Partial<A2AMessage>): Promise<A2AMessage> {
-  const res = await fetch("/api/agent/negotiate", {
+  const res = await fetch(getEndpoint("/api/agent/negotiate"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

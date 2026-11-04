@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { API_BASE } from "../lib/api";
 import {
   Database,
   CheckCircle2,
@@ -44,7 +45,7 @@ export function DatabaseStatusModal({ isOpen, onClose }: DatabaseStatusModalProp
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/db/status");
+      const res = await fetch(`${API_BASE.replace(/\/$/, '')}/api/db/status`);
       if (res.ok) {
         const data = await res.json();
         setHealth(data);
@@ -60,7 +61,7 @@ export function DatabaseStatusModal({ isOpen, onClose }: DatabaseStatusModalProp
     setSeeding(true);
     setStatusMessage("Executing idempotent database upsert & index build across 5 malls...");
     try {
-      const res = await fetch("/api/db/seed", { method: "POST" });
+      const res = await fetch(`${API_BASE.replace(/\/$/, '')}/api/db/seed`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
         setStatusMessage(

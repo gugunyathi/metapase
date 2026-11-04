@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { API_BASE } from "@/lib/api";
 import { INDOOR, OUTDOOR, BEL_AIR_STORES, TICKS, fill, hueVar, type Store } from "@/lib/acn-data";
 import { LandingPage } from "@/components/LandingPage";
 import { PasskeyModal } from "@/components/PasskeyModal";
@@ -1176,7 +1177,7 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
     saveParked(updated);
 
     // Persist parked offer directly to MongoDB
-    fetch("/api/offers/park", {
+    fetch(`${API_BASE.replace(/\/$/, '')}/api/offers/park`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newParked),

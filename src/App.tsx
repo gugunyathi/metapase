@@ -641,11 +641,23 @@ export default function App() {
           outletName: d.location.outletName,
           status: d.status,
           negotiatedPriceZAR: d.negotiatedPriceZAR
+        })),
+        purchasedItems: commerce.purchases.map(pr => ({
+          id: pr.id,
+          storeId: pr.storeId,
+          campaignId: pr.campaignId,
+          sku: pr.sku,
+          itemName: pr.itemName,
+          outletName: pr.outletName,
+          category: pr.category,
+          priceZAR: pr.priceZAR,
+          referenceId: pr.referenceId,
+          paidAt: pr.paidAt
         }))
       });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [auth, intent, maxBudgetZAR, activeMallId, activeView, commerce.parked, commerce.cartLines, engine.deals]);
+  }, [auth, intent, maxBudgetZAR, activeMallId, activeView, commerce.parked, commerce.cartLines, commerce.purchases, engine.deals]);
 
   const simulateShoppingRun = useCallback(() => {
     if (dataSource !== 'demo') return;

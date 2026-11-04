@@ -6,7 +6,7 @@ import { REAL_PRODUCTS } from '../src/config/products.js';
 import { STORE_NODES } from '../src/config/venue.js';
 import { db, initDatabase, isDbConnected, DbUserSession, DbTransactionReceipt } from './db.js';
 import { handleMuseRequest, museMerchantCounter, museStatus } from './muse.js';
-import { handleCreatePayPalOrder, handleCapturePayPalOrder } from './routes/paypal.js';
+import { handleCreatePayPalOrder, handleCapturePayPalOrder, handleGetPayPalAuditLedger, handleParkOffer } from './routes/paypal.js';
 
 // Load .env before anything reads process.env (Node 22+). A missing file is fine: real environment variables still work.
 try {
@@ -67,6 +67,19 @@ const ALLOWED_ORIGINS = new Set(
     .map(origin => origin.trim())
     .filter(Boolean)
 );
+
+export const isAllowedOrigin = (origin?: string): boolean => {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.has('*') || ALLOWED_ORIGINS.has(origin)) return true;
+  try {
+    const u = new URL(origin);
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
+    if (u.hostname.endsWith('.vercel.app') || u.hostname.endsWith('.onrender.com') || u.hostname.endsWith('.pages.dev')) return true;
+  } catch {
+    // ignore
+  }
+  return false;
+};
 const ALLOW_SANDBOX_PAY = process.env.METAPASE_ALLOW_SANDBOX_PAY !== 'false';
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const CHALLENGE_TTL_MS = 2 * 60 * 1000;
@@ -226,10 +239,10 @@ const sendJson = (res: ServerResponse, status: number, data: unknown, origin?: s
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store'
   };
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     headers['Access-Control-Allow-Origin'] = origin;
-    headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS';
-    headers['Access-Control-Allow-Headers'] = 'Content-Type';
+    headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+    headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Agent-Protocol, X-Digital-Badge, X-User-Id, X-Store-Id, X-A2A-Protocol-Version';
     headers['Vary'] = 'Origin';
   }
   res.writeHead(status, headers);
@@ -263,7 +276,7 @@ const readClientData = (encoded: string, expectedType: 'webauthn.create' | 'weba
     throw new HttpError(400, 'INVALID_CLIENT_DATA', 'Passkey client data could not be read.');
   }
   if (data.type !== expectedType || typeof data.challenge !== 'string') throw new HttpError(401, 'INVALID_CLIENT_DATA', 'Passkey response has the wrong type.');
-  if (!data.origin || !ALLOWED_ORIGINS.has(data.origin)) throw new HttpError(401, 'ORIGIN_NOT_ALLOWED', `Origin ${data.origin ?? 'unknown'} is not allowed. Add it to METAPASE_ALLOWED_ORIGINS.`);
+  if (!data.origin || !isAllowedOrigin(data.origin)) throw new HttpError(401, 'ORIGIN_NOT_ALLOWED', `Origin ${data.origin ?? 'unknown'} is not allowed. Add it to METAPASE_ALLOWED_ORIGINS.`);
   return { raw, challenge: data.challenge };
 };
 
@@ -490,6 +503,9 @@ const ROUTES: Record<string, RouteHandler> = {
   'POST /api/pay/paypal/capture-order': handleCapturePayPalOrder,
   'POST /api/paypal/create-order': handleCreatePayPalOrder,
   'POST /api/paypal/checkout-settle': handleCapturePayPalOrder,
+  'GET /api/paypal/audit-ledger': handleGetPayPalAuditLedger,
+  'GET /api/pay/paypal/audit-ledger': handleGetPayPalAuditLedger,
+  'POST /api/offers/park': handleParkOffer,
 
   'GET /api/health': async () => {
     const agents = getAllMerchantAgents();
@@ -1420,11 +1436,12 @@ const server = createServer(async (req, res) => {
   const key = `${req.method} ${path}`;
 
   if (req.method === 'OPTIONS') {
-    if (origin && ALLOWED_ORIGINS.has(origin)) {
+    if (!origin || isAllowedOrigin(origin)) {
       res.writeHead(204, {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-Agent-Protocol, X-Digital-Badge, X-User-Id, X-Store-Id',
+        'Access-Control-Allow-Origin': origin || '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Agent-Protocol, X-Digital-Badge, X-User-Id, X-Store-Id, X-A2A-Protocol-Version',
+        'Access-Control-Max-Age': '86400',
         'Vary': 'Origin'
       });
       res.end();

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { API_BASE } from "../lib/api";
 import { AgGridReact } from "@ag-grid-community/react";
 import {
   ColDef,
@@ -373,7 +374,7 @@ export function A2ATransactionAuditLedger() {
     window.addEventListener("autocom:paypal-payment-settled", handlePaymentSettled);
 
     // Sync backend orders if available
-    fetch("/api/paypal/audit-ledger")
+    fetch(`${API_BASE.replace(/\/$/, '')}/api/paypal/audit-ledger`)
       .then((res) => res.json())
       .then((data) => {
         if (data && Array.isArray(data.orders) && data.orders.length > 0) {
