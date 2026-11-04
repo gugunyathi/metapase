@@ -464,7 +464,23 @@ const ROUTES: Record<string, RouteHandler> = {
     } catch (err) {
       console.warn('[Passkeys] Failed to persist passkey to database:', err);
     }
-    return [200, { status: 'REGISTERED', credentialId: payload.credentialId }];
+    console.log(`[Passkeys] Registered credential ${payload.credentialId} in memory`);
+    // Return both `status` AND `registered: true` so any client field-check succeeds
+    return [200, { status: 'REGISTERED', registered: true, credentialId: payload.credentialId }];
+  },
+
+  // Payment challenge — bound to a transaction token (this was the missing route)
+  'POST /api/pay/challenge': async req => {
+    const payload = await parseJsonBody<{ transactionToken?: string }>(req);
+    if (!payload?.transactionToken) {
+      return [400, { error: 'MISSING_TOKEN', message: 'transactionToken is required to issue a payment challenge.' }];
+    }
+    const tokenEntry = TOKENS.get(payload.transactionToken);
+    if (!tokenEntry || tokenEntry.expiresAt < Date.now()) {
+      return [401, { error: 'TOKEN_INVALID', message: 'Transaction token is expired or does not exist.' }];
+    }
+    const challenge = issueChallenge('pay', payload.transactionToken);
+    return [200, { challenge, rpId: RP_ID }];
   },
 
   'POST /api/pay/settle': async req => {
@@ -480,13 +496,16 @@ const ROUTES: Record<string, RouteHandler> = {
     const { mechanism } = payload.authPayload;
     let verified = false;
 
-    if (mechanism === 'meta_pay_passkey') {
+    // Accept 'webauthn' (sent by metaPay.ts authorizePayment) and legacy 'meta_pay_passkey'
+    if (mechanism === 'webauthn' || mechanism === 'meta_pay_passkey') {
       await verifyPasskeyAssertion(payload.transactionToken, payload.authPayload);
       verified = true;
-    } else if (mechanism === 'meta_pay_sandbox') {
+    // Accept 'meta_pay_sandbox' and 'biometric_passkey' (sent by SANDBOX_AUTH fallback)
+    } else if (mechanism === 'meta_pay_sandbox' || mechanism === 'biometric_passkey' || mechanism === 'sandbox') {
       if (!ALLOW_SANDBOX_PAY) throw new HttpError(403, 'SANDBOX_DISABLED', 'Sandbox payment is disabled on this server.');
+      verified = false; // sandbox: not cryptographically verified but allowed
     } else {
-      throw new HttpError(400, 'UNSUPPORTED_AUTH', `Payment mechanism ${mechanism ?? 'unknown'} is not supported.`);
+      throw new HttpError(400, 'UNSUPPORTED_AUTH', `Payment mechanism '${mechanism ?? 'unknown'}' is not supported.`);
     }
 
     TOKENS.delete(payload.transactionToken);
@@ -506,7 +525,7 @@ const ROUTES: Record<string, RouteHandler> = {
       itemName: campaign?.itemName ?? 'Item',
       amountZAR: tokenEntry.priceZAR,
       savingsZAR: campaign ? Math.max(0, campaign.stickerPriceZAR - tokenEntry.priceZAR) : 0,
-      purchasedBy: mechanism === 'meta_pay_passkey' ? 'manual_user_checkout' : 'autonomous_personal_agent',
+      purchasedBy: (mechanism === 'webauthn' || mechanism === 'meta_pay_passkey') ? 'manual_user_checkout' : 'autonomous_personal_agent',
       timestamp: new Date().toISOString(),
       authorizationRef: `AUTH_${randomBytes(6).toString('hex').toUpperCase()}`,
       qrPayload: `metapase://voucher?code=${referenceId}&store=${campaign?.outletId}&amount=${tokenEntry.priceZAR}`,

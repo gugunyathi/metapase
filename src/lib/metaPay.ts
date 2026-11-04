@@ -11,7 +11,7 @@ export type PostJson = <T>(path: string, body: unknown) => Promise<JsonResult<T>
 const STORAGE_KEY = 'metapase:passkey';
 const TIMEOUT_MS = 60000;
 
-export const SANDBOX_AUTH: AuthPayload = { mechanism: 'biometric_passkey', signature: 'sig_valid' };
+export const SANDBOX_AUTH: AuthPayload = { mechanism: 'meta_pay_sandbox', signature: 'sig_valid' };
 
 const toB64u = (buffer: ArrayBuffer): string => {
   const bytes = new Uint8Array(buffer);
@@ -115,14 +115,16 @@ const ensurePasskey = async (post: PostJson): Promise<string> => {
   const algorithm = typeof response.getPublicKeyAlgorithm === 'function' ? response.getPublicKeyAlgorithm() : null;
   if (!publicKey || algorithm === null) throw new Error('This browser can’t share passkey keys. Update your browser to pay with a passkey.');
   const credentialId = toB64u(credential.rawId);
-  const registration = await post<{ registered?: boolean; message?: string }>('/api/pay/passkey/register', {
+  const registration = await post<{ registered?: boolean; status?: string; message?: string }>('/api/pay/passkey/register', {
     challenge,
     credentialId,
     publicKeySpki: toB64u(publicKey),
     algorithm,
     clientDataJSON: toB64u(response.clientDataJSON)
   });
-  if (!registration.ok || !registration.data?.registered) throw new Error(registration.data?.message ?? 'The server didn’t accept this passkey.');
+  // Accept registered:true (new) OR status==='REGISTERED' (legacy)
+  const registrationOk = registration.ok && (registration.data?.registered === true || registration.data?.status === 'REGISTERED');
+  if (!registrationOk) throw new Error(registration.data?.message ?? "The server did not accept this passkey.");
   try {
     window.localStorage?.setItem(STORAGE_KEY, credentialId);
   } catch {
