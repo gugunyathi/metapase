@@ -10,7 +10,10 @@ const MIN_KEYWORD_LENGTH = 3;
 
 /** Every word that should count as a match for this wish, lower-cased. Words under three letters match too much, so they're dropped. */
 export const wishKeywords = (wish: Pick<WishlistItem, 'query' | 'keywords'>): string[] => {
-  const words = [wish.query, ...(wish.keywords ?? [])].map(word => word.trim().toLowerCase()).filter(word => word.length >= MIN_KEYWORD_LENGTH);
+  const queryTokens = (wish.query || '').split(/\s+/);
+  const words = [wish.query, ...queryTokens, ...(wish.keywords ?? [])]
+    .map(word => (word || '').trim().toLowerCase())
+    .filter(word => word.length >= MIN_KEYWORD_LENGTH);
   return [...new Set(words)];
 };
 

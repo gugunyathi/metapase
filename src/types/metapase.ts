@@ -302,4 +302,10 @@ export interface WishlistItem {
   matchedPriceZAR?: number;
   matchedStoreName?: string;
   voucherCode?: string;
+  imageUrl?: string;
+  sourceUrl?: string;
+  brand?: string;
+  isWebProduct?: boolean;
+  embeddedUrl?: string;
+  storeName?: string;
 }
