@@ -417,7 +417,17 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
     if (!options.autopilot || negotiatingRef.current.size > 0) return;
     const { readings, intent, maxBudgetZAR, pursue } = optionsRef.current;
     const distanceOf = (storeId: string): number => readings.find(reading => reading.node.id === storeId)?.distanceM ?? Number.POSITIVE_INFINITY;
-    const planFor = pursue ?? ((deal: Deal) => (matchesIntent(deal.category, intent) ? { budgetZAR: maxBudgetZAR } : null));
+
+    // STRICT RULE: when no caller-supplied pursue function is given, the engine's
+    // built-in fallback must NOT use 'any' intent as a catch-all — that would
+    // silently park/buy everything without the user's consent.  Instead it gates
+    // on a specific category filter, the same way App.tsx does.
+    const defaultPlanFor = (deal: Deal): { budgetZAR: number } | null => {
+      if (intent === 'any') return null; // No specific intent → do nothing
+      return matchesIntent(deal.category, intent) ? { budgetZAR: maxBudgetZAR } : null;
+    };
+
+    const planFor = pursue ?? defaultPlanFor;
     const candidates = Object.values(deals)
       .filter(deal => deal.status === 'discovered' && distanceOf(deal.storeId) <= MATCH_RADIUS_M)
       .map(deal => ({ deal, plan: planFor(deal) }))

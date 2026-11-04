@@ -219,29 +219,13 @@ export default function App() {
   const agentActive = autopilot && auth !== null;
 
   // User Shopping Wishlist (Voice & Text)
+  // No default seeds: the agent must not act on anything until the user explicitly adds an intent or wishlist item.
   const [wishlist, setWishlist] = useState<WishlistItem[]>(() => {
     try {
       const stored = localStorage.getItem('metapase:wishlist');
       if (stored) return JSON.parse(stored);
     } catch {}
-    return [
-      {
-        id: 'wish_1',
-        query: 'Linen Blazer',
-        targetMaxPriceZAR: 1100,
-        autoBuy: true,
-        addedAt: Date.now(),
-        status: 'active'
-      },
-      {
-        id: 'wish_2',
-        query: 'Nike Pegasus',
-        targetMaxPriceZAR: 2200,
-        autoBuy: true,
-        addedAt: Date.now(),
-        status: 'active'
-      }
-    ];
+    return [];
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
@@ -465,13 +449,32 @@ export default function App() {
     if (event.type === 'paid') resolveWishOnPurchase(event.snapshot, event.priceZAR, event.referenceId);
   }, [commerce.handleEvent, celebrate, resolveWishOnPurchase]);
 
-  /** What the agent should do about a deal: chase it (and for how much), or leave it alone. A wish beats the general filter. */
+  /**
+   * What the agent should do about a deal: chase it (and for how much), or leave it alone.
+   *
+   * STRICT RULE — no silent auto-shopping:
+   *   • A wishlist match always wins (user explicitly added it).
+   *   • A specific category intent (not 'any') gates the general budget.
+   *   • When intent is 'any' AND there are no active wishlist items the agent
+   *     does nothing — cards stay on the carousel for the user to decide.
+   *     This prevents the bag and parked list piling up without user consent.
+   */
   const planFor = useCallback((deal: Deal): { budgetZAR: number; wish: WishlistItem | null } | null => {
+    // 1. Active wishlist item — always act (user explicitly asked for this).
+    const activeWishlist = wishlist.filter(item => item.status === 'active');
     const wish = auth?.signedIn
-      ? wishlist.find(item => wishMatchesDeal(item, { itemName: deal.ad.itemName, sku: deal.ad.sku, category: deal.category })) ?? null
+      ? activeWishlist.find(item => wishMatchesDeal(item, { itemName: deal.ad.itemName, sku: deal.ad.sku, category: deal.category })) ?? null
       : null;
     if (wish) return { budgetZAR: wishBudget(wish, maxBudgetZAR), wish };
-    return matchesIntent(deal.category, intent) ? { budgetZAR: maxBudgetZAR, wish: null } : null;
+
+    // 2. Specific category intent set by the user — act within budget.
+    if (intent !== 'any' && matchesIntent(deal.category, intent)) {
+      return { budgetZAR: maxBudgetZAR, wish: null };
+    }
+
+    // 3. No specific intent and no matching wish — do NOT park or buy.
+    //    Cards stay on the carousel; user must add intent or a wish first.
+    return null;
   }, [wishlist, auth?.signedIn, intent, maxBudgetZAR]);
 
   const pursue = useCallback((deal: Deal): { budgetZAR: number } | null => {
