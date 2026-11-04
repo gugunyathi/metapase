@@ -31,7 +31,8 @@ export const PayPalPaymentContainer: React.FC<PayPalContainerProps> = ({
   const [settledRef, setSettledRef] = useState<string | null>(null);
 
   const clientId =
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_PAYPAL_SANDBOX_CLIENT_ID) ||
+    (typeof import.meta !== 'undefined' &&
+      (import.meta.env?.VITE_PAYPAL_SANDBOX_CLIENT_ID || import.meta.env?.VITE_PAYPAL_CLIENT_ID)) ||
     'AVZv60PIBfNkjYbTKqePHwRCXxMGCLKNn4XceXJKyJtO6ltnaDyWypF8Gi3jqGrWxf5irXnJK1SSdAg6';
 
   // Adaptive layouts to fit the MetaPase device simulators
