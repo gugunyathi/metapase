@@ -98,6 +98,21 @@ body {
   animation: metapase-fade-in 260ms ease-out both;
 }
 
+@keyframes metapase-deal-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.metapase-deal-sheet {
+  animation: metapase-deal-sheet-in 380ms cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
 @keyframes metapase-flash {
   0%, 100% {
     box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);

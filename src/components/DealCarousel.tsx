@@ -33,6 +33,7 @@ interface DealCarouselProps {
   onBuyLater?: (deal: Deal, priceZAR: number) => void;
   onPark?: (deal: Deal, priceZAR: number, bestOfferZAR: number | null) => void;
   parkedCampaignIds?: Set<string>;
+  expandedId?: string | null;
   emptyState: ReactNode;
   compact?: boolean;
   leading?: ReactNode;
@@ -113,7 +114,7 @@ const aheadIndexFor = (items: CarouselItem[], heading: number): number => {
   return best;
 };
 
-export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, pinRequest, onFocusChange, onNegotiate, onPay, onBuyNow, onBuyLater, onPark, parkedCampaignIds, emptyState, compact = false, leading, trailing, flashId = null, onOpen }: DealCarouselProps) {
+export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, pinRequest, onFocusChange, onNegotiate, onPay, onBuyNow, onBuyLater, onPark, parkedCampaignIds, expandedId, emptyState, compact = false, leading, trailing, flashId = null, onOpen }: DealCarouselProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -438,6 +439,7 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
             <div className="grid justify-items-center py-3" style={{ transformStyle: 'preserve-3d' }}>
               {items.map(item => {
                 const active = item.id === activeId;
+                const isExpanded = item.id === expandedId;
                 const relative = item.bearingKnown ? signedAngleDelta(item.bearing, heading) : 0;
                 return (
                   <div
@@ -456,7 +458,7 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
                         <Navigation2 className="h-3.5 w-3.5 transition-transform duration-300" style={{ transform: `rotate(${relative}deg)` }} />
                         {formatDistance(item.distanceM)} {sideLabel(item, heading)}
                       </div>
-                      <div className={`relative ${item.id === flashId ? 'metapase-flash rounded-3xl' : 'rounded-3xl'}`}>
+                      <div className={`relative ${item.id === flashId ? 'metapase-flash rounded-3xl' : 'rounded-3xl'} ${isExpanded ? 'ring-2 ring-emerald-400/70 shadow-[0_0_28px_4px_rgba(52,211,153,0.35)]' : ''}`}>
                         {item.deal.isShopifyVirtual && (
                           <span className="absolute top-2 right-2 z-20 flex items-center gap-1 bg-cyan-900 border border-cyan-400 text-cyan-200 text-xs px-2 py-0.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,211,238,0.5)]">
                             <span>🌐</span> Shopify Tenant

@@ -916,6 +916,7 @@ export default function App() {
             addLog('SYSTEM', `Parked ${deal.ad.itemName} at ${formatZAR(priceZAR)}.`, 'success');
           }}
           parkedCampaignIds={new Set(commerce.parked.map(p => p.campaignId))}
+          expandedId={detailId}
           emptyState={emptyDeals}
           compact={compact}
           leading={<CornerButton icon={SquareParking} label="Parked" count={commerce.parked.length} tone="amber" corner="parked" bumpKey={bumps.parked} compact={compact || activeView === 'mobile'} onClick={() => setSheet('parked')} />}
