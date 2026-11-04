@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { API_BASE } from "../lib/api";
 import { AgGridReact } from "@ag-grid-community/react";

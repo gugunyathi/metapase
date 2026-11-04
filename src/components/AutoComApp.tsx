@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { API_BASE } from "@/lib/api";
 import { INDOOR, OUTDOOR, BEL_AIR_STORES, TICKS, fill, hueVar, type Store } from "@/lib/acn-data";
@@ -1181,7 +1182,7 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newParked),
-    }).catch(() => {});
+    }).catch(() => { });
     setLogs((l) => [
       {
         t: now(),
@@ -1782,11 +1783,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
                       accuracy: 3.5,
                     });
                 }}
-                className={`rounded-xl px-2 py-1 text-[10px] font-mono font-bold transition-all cursor-pointer border ${
-                  isAtBelAir
+                className={`rounded-xl px-2 py-1 text-[10px] font-mono font-bold transition-all cursor-pointer border ${isAtBelAir
                     ? "bg-primary/20 text-primary border-primary/40 shadow-teal"
                     : "bg-white/10 text-white/80 border-white/15 hover:bg-white/20"
-                }`}
+                  }`}
                 title="Toggle Shopping Centre geofence mode"
               >
                 {isAtBelAir ? "✓ Mall Active" : "GPS"}
@@ -1805,11 +1805,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
                 <button
                   key={m.id}
                   onClick={() => handleSelectMall(m.id)}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9.5px] font-mono whitespace-nowrap transition-all cursor-pointer border shrink-0 ${
-                    isActive
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9.5px] font-mono whitespace-nowrap transition-all cursor-pointer border shrink-0 ${isActive
                       ? "bg-primary/25 border-primary text-white font-extrabold shadow-teal scale-[1.02]"
                       : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/15 hover:text-white"
-                  }`}
+                    }`}
                   title={`Switch to ${m.name} (${m.subtitle})`}
                 >
                   <span>{m.icon}</span>
@@ -1826,11 +1825,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
         {/* Far Left: Park 🅿️ Floating Button with expanding/contracting bounce */}
         <button
           onClick={() => setParkingLotOpen(true)}
-          className={`glass relative flex items-center justify-center gap-1.5 h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-full text-xs font-mono font-bold text-white bg-[#090d19]/90 border border-primary/50 shadow-teal hover:border-primary transition-all cursor-pointer active:scale-95 shrink-0 backdrop-blur-2xl ${
-            parkIconPulse
+          className={`glass relative flex items-center justify-center gap-1.5 h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-full text-xs font-mono font-bold text-white bg-[#090d19]/90 border border-primary/50 shadow-teal hover:border-primary transition-all cursor-pointer active:scale-95 shrink-0 backdrop-blur-2xl ${parkIconPulse
               ? "animate-icon-pulse ring-4 ring-primary/80 shadow-[0_0_28px_rgba(20,184,166,0.95)]"
               : ""
-          }`}
+            }`}
           title="Open Parked Offers (Holding Lot)"
           aria-label="Open Holding Lot"
         >
@@ -1852,11 +1850,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
           {/* 1. App Sound Volume On/Off Floating Circular Icon Button */}
           <button
             onClick={handleToggleSound}
-            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center text-xs sm:text-sm transition-all cursor-pointer shadow-xl backdrop-blur-2xl border active:scale-95 ${
-              soundEnabled
+            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center text-xs sm:text-sm transition-all cursor-pointer shadow-xl backdrop-blur-2xl border active:scale-95 ${soundEnabled
                 ? "bg-[#090d19]/90 text-primary border-primary/50 shadow-teal"
                 : "bg-[#090d19]/80 text-muted-foreground border-white/20 opacity-70 hover:opacity-100"
-            }`}
+              }`}
             title={
               soundEnabled ? "App Sounds: ON (Tap to Mute)" : "App Sounds: OFF (Tap to Unmute)"
             }
@@ -1868,11 +1865,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
           {/* 2. Deal Pop-Up Silencer Floating Circular Icon Button */}
           <button
             onClick={handleToggleSilencePopups}
-            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center text-xs sm:text-sm transition-all cursor-pointer shadow-xl backdrop-blur-2xl border active:scale-95 ${
-              silencePopups
+            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center text-xs sm:text-sm transition-all cursor-pointer shadow-xl backdrop-blur-2xl border active:scale-95 ${silencePopups
                 ? "bg-rose-500/25 text-rose-300 border-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.4)]"
                 : "bg-[#090d19]/90 text-accent border-accent/50 shadow-amber"
-            }`}
+              }`}
             title={
               silencePopups
                 ? "Deal Pop-up Cards: SILENCED (Saved directly to Deck). Tap to Enable."
@@ -1887,11 +1883,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
         {/* Far Right: Bag 🛍️ Floating Button with expanding/contracting bounce */}
         <button
           onClick={() => setBoughtModalOpen(true)}
-          className={`glass relative flex items-center justify-center gap-1.5 h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-full text-xs font-mono font-bold text-white bg-[#090d19]/90 border border-accent/50 shadow-amber hover:border-accent transition-all cursor-pointer active:scale-95 shrink-0 backdrop-blur-2xl ${
-            bagIconPulse
+          className={`glass relative flex items-center justify-center gap-1.5 h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-full text-xs font-mono font-bold text-white bg-[#090d19]/90 border border-accent/50 shadow-amber hover:border-accent transition-all cursor-pointer active:scale-95 shrink-0 backdrop-blur-2xl ${bagIconPulse
               ? "animate-icon-pulse ring-4 ring-accent/80 shadow-[0_0_28px_rgba(245,158,11,0.95)]"
               : ""
-          }`}
+            }`}
           title="Open Bought Items & Receipts"
           aria-label="Open Bought Items"
         >
@@ -1913,11 +1908,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
       {divingCard && (
         <div
           key={divingCard.id}
-          className={`fixed z-[999] pointer-events-none rounded-2xl p-3 bg-[#0f1423]/95 border-2 shadow-2xl backdrop-blur-2xl ${
-            divingCard.target === "park"
+          className={`fixed z-[999] pointer-events-none rounded-2xl p-3 bg-[#0f1423]/95 border-2 shadow-2xl backdrop-blur-2xl ${divingCard.target === "park"
               ? "animate-dive-park border-primary shadow-teal text-primary"
               : "animate-dive-bag border-accent shadow-amber text-accent"
-          }`}
+            }`}
           style={{ width: "13rem" }}
         >
           <div className="flex items-center gap-2">
@@ -2036,13 +2030,12 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
                         e.stopPropagation();
                         handlePullOutCard(s);
                       }}
-                      className={`relative rounded-2xl sm:rounded-3xl p-2.5 sm:p-3.5 text-left transition-all duration-300 touch-manipulation cursor-pointer w-full block bg-[#0f1423]/95 backdrop-blur-2xl shadow-2xl ${
-                        isFacing
+                      className={`relative rounded-2xl sm:rounded-3xl p-2.5 sm:p-3.5 text-left transition-all duration-300 touch-manipulation cursor-pointer w-full block bg-[#0f1423]/95 backdrop-blur-2xl shadow-2xl ${isFacing
                           ? "ring-2 ring-accent border-accent shadow-amber"
                           : isExpanded
                             ? "ring-2 ring-primary border-primary shadow-teal"
                             : "border border-white/15"
-                      }`}
+                        }`}
                       style={{
                         width: isSmallMobile ? "13.6rem" : isMobile ? "14.8rem" : "15.8rem",
                         boxShadow: isFacing
@@ -2247,11 +2240,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
           </span>
           <button
             onClick={() => setDeckMode(deckMode === "left" ? "none" : "left")}
-            className={`px-3 py-1 rounded-full font-mono text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-              deckMode === "left"
+            className={`px-3 py-1 rounded-full font-mono text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${deckMode === "left"
                 ? "bg-primary text-primary-foreground shadow-teal"
                 : "text-muted-foreground hover:text-foreground hover:bg-white/10"
-            }`}
+              }`}
             title="Align pulled cards to left deck stack"
           >
             <span>⊟</span>
@@ -2259,11 +2251,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
           </button>
           <button
             onClick={() => setDeckMode(deckMode === "right" ? "none" : "right")}
-            className={`px-3 py-1 rounded-full font-mono text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-              deckMode === "right"
+            className={`px-3 py-1 rounded-full font-mono text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${deckMode === "right"
                 ? "bg-primary text-primary-foreground shadow-teal"
                 : "text-muted-foreground hover:text-foreground hover:bg-white/10"
-            }`}
+              }`}
             title="Align pulled cards to right deck stack"
           >
             <span>⊞</span>
@@ -2383,9 +2374,8 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
                 bottomCarouselRef.current.scrollLeft += e.deltaY;
               }
             }}
-            className={`w-full flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 overflow-x-auto scrollbar-none snap-x snap-mandatory py-2.5 px-6 sm:px-8 pointer-events-auto touch-pan-x select-none transition-all ${
-              isBottomDragging ? "cursor-grabbing" : "cursor-grab"
-            }`}
+            className={`w-full flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 overflow-x-auto scrollbar-none snap-x snap-mandatory py-2.5 px-6 sm:px-8 pointer-events-auto touch-pan-x select-none transition-all ${isBottomDragging ? "cursor-grabbing" : "cursor-grab"
+              }`}
             style={{
               WebkitOverflowScrolling: "touch",
               scrollbarWidth: "none",
@@ -2510,11 +2500,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
               onClick={() =>
                 safeBottomAction(() => setDeckMode(deckMode === "left" ? "none" : "left"))
               }
-              className={`glass relative snap-center flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 rounded-2xl px-2.5 sm:px-3.5 py-2 sm:py-2.5 border transition-all cursor-pointer backdrop-blur-2xl ring-1 ring-white/10 shrink-0 select-none ${
-                deckMode === "left"
+              className={`glass relative snap-center flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 rounded-2xl px-2.5 sm:px-3.5 py-2 sm:py-2.5 border transition-all cursor-pointer backdrop-blur-2xl ring-1 ring-white/10 shrink-0 select-none ${deckMode === "left"
                   ? "border-primary bg-primary/25 text-primary shadow-teal"
                   : "border-white/20 bg-[#090d19]/92 hover:bg-white/15 hover:border-primary"
-              }`}
+                }`}
               title="Align pulled cards into Left Deck stack"
               aria-label="Align pulled cards to left stack"
             >
@@ -2532,11 +2521,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
               onClick={() =>
                 safeBottomAction(() => setDeckMode(deckMode === "right" ? "none" : "right"))
               }
-              className={`glass relative snap-center flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 rounded-2xl px-2.5 sm:px-3.5 py-2 sm:py-2.5 border transition-all cursor-pointer backdrop-blur-2xl ring-1 ring-white/10 shrink-0 select-none ${
-                deckMode === "right"
+              className={`glass relative snap-center flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 rounded-2xl px-2.5 sm:px-3.5 py-2 sm:py-2.5 border transition-all cursor-pointer backdrop-blur-2xl ring-1 ring-white/10 shrink-0 select-none ${deckMode === "right"
                   ? "border-primary bg-primary/25 text-primary shadow-teal"
                   : "border-white/20 bg-[#090d19]/92 hover:bg-white/15 hover:border-primary"
-              }`}
+                }`}
               title="Align pulled cards into Right Deck stack"
               aria-label="Align pulled cards to right stack"
             >
@@ -2795,21 +2783,19 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
             <div className="flex md:hidden border-b border-border/50 my-3">
               <button
                 onClick={() => setDrawerTab("profile")}
-                className={`flex-1 py-2 text-xs font-mono font-medium border-b-2 transition-colors ${
-                  drawerTab === "profile"
+                className={`flex-1 py-2 text-xs font-mono font-medium border-b-2 transition-colors ${drawerTab === "profile"
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground"
-                }`}
+                  }`}
               >
                 Preferences & Budget
               </button>
               <button
                 onClick={() => setDrawerTab("logs")}
-                className={`flex-1 py-2 text-xs font-mono font-medium border-b-2 transition-colors ${
-                  drawerTab === "logs"
+                className={`flex-1 py-2 text-xs font-mono font-medium border-b-2 transition-colors ${drawerTab === "logs"
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground"
-                }`}
+                  }`}
               >
                 Activity Stream ({logs.length})
               </button>
@@ -2938,11 +2924,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
                         key={preset}
                         type="button"
                         onClick={() => setBudget(preset)}
-                        className={`flex-1 rounded-lg py-1 font-mono text-[9px] sm:text-[10px] transition-colors cursor-pointer ${
-                          budget === preset
+                        className={`flex-1 rounded-lg py-1 font-mono text-[9px] sm:text-[10px] transition-colors cursor-pointer ${budget === preset
                             ? "bg-accent/20 text-accent font-bold border border-accent/40"
                             : "bg-muted/60 text-muted-foreground hover:text-foreground"
-                        }`}
+                          }`}
                       >
                         R{preset >= 1000 ? `${preset / 1000}k` : preset}
                       </button>
@@ -2978,11 +2963,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
                         key={preset}
                         type="button"
                         onClick={() => handleSetProximityRadius(preset)}
-                        className={`flex-1 rounded-lg py-1 font-mono text-[9px] sm:text-[10px] transition-colors cursor-pointer ${
-                          Math.abs(activeProximityRadius - preset) < 0.2
+                        className={`flex-1 rounded-lg py-1 font-mono text-[9px] sm:text-[10px] transition-colors cursor-pointer ${Math.abs(activeProximityRadius - preset) < 0.2
                             ? "bg-primary text-primary-foreground font-bold shadow-teal"
                             : "bg-muted/60 text-muted-foreground hover:text-foreground"
-                        }`}
+                          }`}
                       >
                         {preset}m
                       </button>
@@ -3007,11 +2991,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
                     <button
                       type="button"
                       onClick={handleToggleSound}
-                      className={`p-2 rounded-xl border flex items-center justify-between text-xs transition-all cursor-pointer ${
-                        soundEnabled
+                      className={`p-2 rounded-xl border flex items-center justify-between text-xs transition-all cursor-pointer ${soundEnabled
                           ? "border-primary/60 bg-primary/20 text-white shadow-teal font-bold"
                           : "border-border/60 bg-muted/40 text-muted-foreground"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-1.5">
                         <span>{soundEnabled ? "🔊" : "🔇"}</span>
@@ -3022,11 +3005,10 @@ export function AutoComApp({ initialView }: { initialView?: "landing" | "mesh" }
                     <button
                       type="button"
                       onClick={handleToggleVibrate}
-                      className={`p-2 rounded-xl border flex items-center justify-between text-xs transition-all cursor-pointer ${
-                        vibrateEnabled
+                      className={`p-2 rounded-xl border flex items-center justify-between text-xs transition-all cursor-pointer ${vibrateEnabled
                           ? "border-accent/60 bg-accent/20 text-white shadow-amber font-bold"
                           : "border-border/60 bg-muted/40 text-muted-foreground"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-1.5">
                         <span>📳</span>

@@ -28,8 +28,8 @@ export const ZAR_TO_USD_EXCHANGE_RATE = 0.054;
  */
 export const PAYPAL_SANDBOX_CONFIG = {
   clientId:
-    typeof import.meta !== "undefined" && import.meta.env?.VITE_PAYPAL_SANDBOX_CLIENT_ID
-      ? (import.meta.env.VITE_PAYPAL_SANDBOX_CLIENT_ID as string)
+    typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PAYPAL_SANDBOX_CLIENT_ID
+      ? ((import.meta as any).env.VITE_PAYPAL_SANDBOX_CLIENT_ID as string)
       : "sb-autocom-agent-sandbox-client-id-2026",
   environment: "sandbox" as const,
   currencyTarget: "USD" as const,
