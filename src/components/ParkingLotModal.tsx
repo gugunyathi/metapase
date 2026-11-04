@@ -167,7 +167,7 @@ export function ParkingLotModal({
                       disabled={isExpired}
                       className="bg-cta flex-1 min-h-[40px] rounded-xl py-2 px-3 text-xs font-bold text-accent-foreground shadow-amber transition-transform active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <span>Claim & Buy Now</span>
+                      <span>Negotiate & Buy Now</span>
                       <span>🛍️</span>
                     </button>
                     <button

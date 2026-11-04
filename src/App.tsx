@@ -1425,6 +1425,16 @@ export default function App() {
           onWatchMany={commerce.watchParkedMany}
           onDiscardMany={commerce.discardParkedMany}
           onClearAll={commerce.clearParked}
+          onNegotiateAndBuy={async item => {
+            addLog('LLAMA_AGENT', `🤖 Starting discount negotiation for parked item: "${item.itemName}" at ${item.outletName}...`, 'info');
+            const result = await engine.negotiateAndBuy(item, maxBudgetZAR);
+            if (result.ok) {
+              bumpCorner('bag');
+              addLog('SYSTEM', `🎉 Deal closed! ${item.itemName} negotiated at ${formatZAR(result.finalPriceZAR!)} (Saved ${formatZAR(result.discountZAR!)} / ${result.discountPct}% off). Moved to Bag.`, 'success');
+            } else {
+              addLog('LLAMA_AGENT', `Negotiation with ${item.outletName} failed: ${result.note}`, 'error');
+            }
+          }}
         />
       </Sheet>
       <Sheet open={sheet === 'bag'} onClose={() => setSheet(null)} title="Shopping bag" subtitle="Everything the agent has bought for you." icon={ShoppingBag}>

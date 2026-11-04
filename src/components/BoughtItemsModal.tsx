@@ -195,9 +195,12 @@ export function BoughtItemsModal({
                     <div className="mt-3 flex items-baseline justify-between border-t border-border/30 pt-2.5">
                       <div className="flex items-baseline gap-2">
                         <span className="text-lg font-bold text-accent">R{item.price}</span>
-                        <span className="text-xs text-muted-foreground line-through">
-                          R{item.open}
-                        </span>
+                        <span className="text-xs text-muted-foreground line-through">R{item.open}</span>
+                        {item.open > item.price && (
+                          <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                            Negotiated: -R{(item.open - item.price).toLocaleString()} ({discount}% off)
+                          </span>
+                        )}
                       </div>
 
                       <div className="font-mono text-[10px] text-muted-foreground">

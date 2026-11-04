@@ -105,7 +105,14 @@ export default function TimelinePage({ timeline, watchlist, onRemoveWatch }: Tim
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="text-base font-bold tabular-nums text-amber-200">{formatZAR(event.priceZAR)}</p>
-                            {event.priceZAR < event.item.stickerPriceZAR && <p className="text-[11px] tabular-nums text-slate-500 line-through">{formatZAR(event.item.stickerPriceZAR)}</p>}
+                            {event.priceZAR < event.item.stickerPriceZAR ? (
+                              <div className="space-y-0.5 mt-0.5">
+                                <p className="text-[11px] tabular-nums text-slate-500 line-through">{formatZAR(event.item.stickerPriceZAR)}</p>
+                                <span className="inline-block rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-bold px-1.5 py-0.5 text-[10px]">
+                                  -{Math.round(((event.item.stickerPriceZAR - event.priceZAR) / event.item.stickerPriceZAR) * 100)}% ({formatZAR(event.item.stickerPriceZAR - event.priceZAR)} off)
+                                </span>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                         {watched && (

@@ -12,6 +12,8 @@ export interface DemoProduct {
   floorRatio: number;
   imageUrl?: string;
   category?: string;
+  isShopifyVirtual?: boolean;
+  shopifyDomain?: string;
 }
 
 // Combine all store nodes from all malls + legacy default store nodes
@@ -153,7 +155,24 @@ const ping = async (payload: ProximityPingPayload): Promise<ProximityResponse | 
 
 const bargain = async (request: BargainRequest): Promise<BargainResponse> => {
   await wait();
-  const product = campaigns.get(request.campaignId);
+  let product = campaigns.get(request.campaignId);
+  if (!product) {
+    const found = REAL_PRODUCTS.find(p => request.campaignId.includes(p.sku) || request.campaignId.includes(p.id));
+    if (found) {
+      const newProd: DemoProduct = {
+        sku: found.sku,
+        itemName: found.itemName,
+        stickerPriceZAR: found.stickerPriceZAR,
+        floorRatio: found.floorRatio,
+        imageUrl: found.imageUrl,
+        category: found.category,
+        isShopifyVirtual: found.isShopifyVirtual,
+        shopifyDomain: found.shopifyDomain
+      };
+      campaigns.set(request.campaignId, newProd);
+      product = newProd;
+    }
+  }
   if (!product) throw new Error('This demo campaign has expired. Scan again.');
   const floor = Math.round(product.stickerPriceZAR * product.floorRatio);
   if (request.agentOfferZAR >= floor) {
@@ -201,7 +220,24 @@ const settle = async (request: SettleRequest): Promise<SettleResponse> => {
   if (!grant) return { success: false };
   tokens.delete(request.transactionToken);
   // Take one unit off the shelf and issue a voucher. Items outside the stocked catalog (the five legacy stores) just settle.
-  const product = campaigns.get(grant.campaignId);
+  let product = campaigns.get(grant.campaignId);
+  if (!product) {
+    const found = REAL_PRODUCTS.find(p => grant.campaignId.includes(p.sku) || grant.campaignId.includes(p.id));
+    if (found) {
+      const newProd: DemoProduct = {
+        sku: found.sku,
+        itemName: found.itemName,
+        stickerPriceZAR: found.stickerPriceZAR,
+        floorRatio: found.floorRatio,
+        imageUrl: found.imageUrl,
+        category: found.category,
+        isShopifyVirtual: found.isShopifyVirtual,
+        shopifyDomain: found.shopifyDomain
+      };
+      campaigns.set(grant.campaignId, newProd);
+      product = newProd;
+    }
+  }
   if (product && isTracked(product.sku)) {
     try {
       const receipt = demoRecordSale({ storeId: campaignStoreIds.get(grant.campaignId), sku: product.sku, priceZAR: grant.priceZAR, purchasedBy: 'autonomous_personal_agent', userId: shopperId });
