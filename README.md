@@ -14,6 +14,8 @@ Built for the Meta AI Hackathon 2026.
 ![WebAuthn](https://img.shields.io/badge/Payments-WebAuthn_passkeys-34d399)
 ![Muse Spark](https://img.shields.io/badge/AI-Muse_Spark_1.3-0082FB?logo=meta&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/DB-MongoDB-47A248?logo=mongodb&logoColor=white)
+![PayPal](https://img.shields.io/badge/Payments-PayPal_Commerce-003087?logo=paypal&logoColor=white)
+![Shopify](https://img.shields.io/badge/Virtual_Retail-Shopify-96bf48?logo=shopify&logoColor=white)
 
 </div>
 
@@ -21,6 +23,8 @@ Built for the Meta AI Hackathon 2026.
 
 ## Contents
 
+- [Origin & Heritage](#origin--heritage)
+- [Meta AI Hackathon Build Log](#meta-ai-hackathon-build-log-oct-26--nov-4-2026)
 - [Overview](#overview)
 - [Demo in 60 seconds](#demo-in-60-seconds)
 - [Muse Spark AI integration](#muse-spark-ai-integration)
@@ -35,6 +39,86 @@ Built for the Meta AI Hackathon 2026.
 - [Roadmap & Completed milestones](#roadmap--completed-milestones)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Origin & Heritage
+
+MetaPase is a **complete rebuild and significant extension** of my earlier project, **AutoComm** (Autonomous Commerce Engine), originally hosted at [`github.com/gugunyathi/autocomm`](https://github.com/gugunyathi/autocomm.git).
+
+AutoComm was a generalist autonomous commerce framework exploring proximity retail, agent negotiation, and passkey payments. For the **Meta Global AI Developer Hackathon 2026** I cloned AutoComm and rebuilt it from the ground up in a leaner, purpose-built style — cutting scope, tightening the type system, and re-centering every feature around **Meta's AI stack** (Muse Spark) and the specific challenge of real-time proximity shopping inside South African malls.
+
+| | AutoComm (origin) | MetaPase (this repo) |
+|---|---|---|
+| **Core purpose** | General autonomous commerce | Proximity shopping inside 50 m beacon radius |
+| **AI layer** | Generic LLM hooks | Meta Muse Spark 1.3 — two-sided merchant + shopper agents |
+| **Payment rails** | Stripe Issuing sandbox | WebAuthn passkeys + PayPal Commerce Platform Pay Later |
+| **Physical world** | Simulated only | 31 real stores mapped across 4 Gauteng malls + 3 virtual transit hubs |
+| **Multi-device** | Mobile only | Desktop, Mobile, Smartwatch, AR Glasses HUD, Car, Voice |
+| **Virtual retail** | — | Shopify catalog ingestion with 75% floor-margin isolation |
+| **Backend** | In-memory demo | Node.js HTTP server + MongoDB Atlas + Vercel serverless |
+
+The git merge commit `f27c1f5bc` on 4 Nov 2026 formally merges the AutoComm lineage into the MetaPase main branch, preserving full attribution history.
+
+---
+
+## Meta AI Hackathon Build Log (Oct 26 – Nov 4, 2026)
+
+The Meta Global AI Developer Hackathon kicked off **Monday 26 October 2026 at 12:00 PM PT**. Everything below was designed, built, tested, and deployed between that moment and **Tuesday 4 November 2026**.
+
+### 🏁 Day 1 — Oct 27 · Foundations & Core Engine
+
+| Commit | What was shipped |
+|---|---|
+| `16cf1d4` | **Initial MetaPase scaffold** — mall detection, proximity zones, and product cards. Renamed from AutoComm, re-scoped to Meta AI Hackathon. |
+| `27c590a` | `vercel.json` SPA deployment config so the app routes correctly on Vercel. |
+| `b8868b4` | Hardened `.gitignore` — blocks all `.env` variants, certs, keys, and build artifacts. |
+| `71f74e0` | Sanitized `.env.example` with MongoDB URI placeholder and documented all server secrets. |
+| `6494fc3` | **Meta Muse Personal Agent Protocol** — full MCP tool schema (`negotiateProximityRetailDeal.json`), personal shopping agent runner, and Stripe Issuing sandbox for agent-issued cards. |
+| `9217db5` | **31 Autonomous Merchant Agents** — all 31 mapped stores now have live Muse-driven agent personalities capable of autonomous and manual price negotiation. |
+| `2736d30` | **WebAuthn passkey auth** (signup, signin, biometric checkout), **R1,000 welcome credit promo**, freeform voice/text wishlist, and discount buy/park listener. |
+| `18e65986` | **Complete REST API** — all core endpoints (`/proximity/ping`, `/agent/bargain`, `/pay/settle`, `/muse/*`, `/merchant/*`), MongoDB client with zero-config in-memory fallback, and full session management. |
+| `540d483` | **Full database persistence** — 31 merchant stores, live inventory shelf counts, transaction ledgers, analytics dashboards, and real-time activity audit feed committed to MongoDB. |
+| `af5fd5a` | **Point-of-Sale auto-financing** — 12-month installment plans, user credit profiles, and POS financing engine. |
+
+### 🔥 Day 9 — Nov 3 · Agent Creation Flow
+
+| Commit | What was shipped |
+|---|---|
+| `db4670e` | **Personal agent creation flow** — guided onboarding UI that provisions a named personal agent, sets shopping intent, and activates autopilot for the first scan cycle. |
+
+### 🚀 Day 10 — Nov 4 · AI, Payments, Virtual Retail & Polish
+
+| Commit | What was shipped |
+|---|---|
+| `f27c1f5` | Merged AutoComm origin history into MetaPase main (git heritage preservation). |
+| `556e728` | **Meta Muse Spark 1.3 integration** — two-sided autonomous bargaining (merchant agent + shopper agent), stock-aware store campaigns, agent onboarding, and `MuseBadge` live connection status indicator. |
+| `6343c7a` | **Muse reasoning tokens** enabled, live MongoDB Atlas URI validation on startup, and startup location permission prompt. |
+| `b95ea6a` | **Demo-mode auto-fallback** — app automatically switches to in-browser simulated stores on backend failure; dynamic backend campaigns; MongoDB inventory seeding script. |
+| `84c38d5` | **Vercel build fix** — scoped `tsconfig`, switched to `vite build` to resolve Vercel CI failures. |
+| `dadadcc` | **Explicit intent gate** — deal cards only park to bag when the user has set a wishlist item or explicit shopping intent (prevents ghost purchases). |
+| `55633ca` | Tailwind v4 custom CSS data added for VS Code IntelliSense autocomplete. |
+| `c5c685d` | **Full session persistence in MongoDB** — transaction receipts, passkey credential storage, and inventory tracking all durable across server restarts. |
+| `404c626` | **PayPal Commerce Platform Pay Later rails** — `@paypal/react-paypal-js` integrated alongside Muse Spark flow; Pay in 4 / Pay Monthly installment logic; `PayPalPaymentContainer`, `PayPalPayLaterButton`, `PayPalStandardButton` components. |
+| `b198e39` | `.env.example` updated with pre-populated PayPal sandbox credentials and agent payment settings for instant copy-to-`.env` onboarding. |
+| `c2956e8` | PayPal endpoints routed through `API_BASE`, **A2A Transaction Audit Ledger** added (`A2ATransactionAuditLedger.tsx`), bag/purchases sync, Vercel CORS headers. |
+| `46bfdb7` | TypeScript diagnostics resolved — ag-grid community declarations, Vite env typings, and path alias fixes. |
+| `d7b26a3` | PayPal env key normalization — both `VITE_PAYPAL_CLIENT_ID` and `VITE_PAYPAL_SANDBOX_CLIENT_ID` are accepted interchangeably. |
+| `ee380c2` | ag-grid and Vite environment type declaration formatting. |
+| `375167e` | **Virtual Retail Presence framework** — Shopify public catalog ingestion, 75% mathematical floor margin isolation, 3 virtual transit hub anchor locations (Park Station, FNB Stadium, Sandton Gautrain), cyan-neon Shopify fulfillment badges across carousel/cards/detail views, and Muse negotiation agent floor protection for virtual stores. |
+
+### 📊 Hackathon Totals at Cut-off (Nov 4, 2026)
+
+| Metric | Count |
+|---|---|
+| Commits since hackathon kickoff | **25** |
+| New source files created | **15+** |
+| Automated guardrail tests passing | **17 / 17** |
+| Physical stores mapped | **31** (across Eastgate, Sandton City, Mall of Africa, Bel Air) |
+| Virtual transit hub anchors | **3** (Park Station, FNB Stadium, Sandton Gautrain) |
+| Device view layouts | **6** (Desktop, Mobile, Watch, AR Glasses, Car, Voice) |
+| Payment rails | **3** (WebAuthn passkeys, PayPal Standard, PayPal Pay Later) |
+| AI models supported | **2** (`muse-spark-1.3`, `meta-models/muse-spark-open-1026`) |
+
+---
 
 ## Overview
 
@@ -86,7 +170,7 @@ MetaPase uses Meta's **Muse Spark** (`muse-spark-1.3`) or open weights (`meta-mo
 - **Circuit Breaker:** Automatically trips and pauses AI requests for 30 seconds after 3 consecutive errors or timeouts.
 - **Strict Timeouts:** 6-second timeout before falling back to rules-based negotiation.
 - **Redaction:** API keys and sensitive tokens are completely scrubbed from error logs and public endpoints.
-- **Guardrail Test Suite:** Run `npm test` to execute 15 automated test cases validating that adversarial model outputs never breach floor prices or leak sensitive data.
+- **Guardrail Test Suite:** Run `npm test` to execute 17 automated test cases validating that adversarial model outputs never breach floor prices or leak sensitive data.
 
 ### Running on Muse Spark Open (Open Weights)
 To run on the open-weight model `meta-models/muse-spark-open-1026` hosted on Baseten or any OpenAI-compatible provider:
@@ -205,7 +289,7 @@ npm run dev      # frontend on http://localhost:5173
 | --- | --- |
 | `npm run dev:all` | Run backend server and Vite frontend concurrently |
 | `npm run muse:check` | Verify Meta Muse Spark API key, endpoint, model response, and live test |
-| `npm test` | Run 15 automated Muse Spark safety guardrail tests against adversarial inputs |
+| `npm test` | Run 17 automated Muse Spark safety guardrail tests against adversarial inputs |
 | `npm run typecheck` | Perform end-to-end TypeScript validation (`tsconfig.json` & `tsconfig.server.json`) |
 | `npm run build` | Compile TypeScript and bundle frontend for production |
 | `npm run agent:shopping` | Run standalone personal shopping agent simulation via CLI |
@@ -349,16 +433,19 @@ metapase/
 ├── api/
 │   └── muse/[action].ts                    Vercel serverless function for Muse AI
 ├── agent/
-│   ├── merchantAgents.ts                   Autonomous merchant agent definitions
+│   ├── merchantAgents.ts                   Autonomous merchant agent definitions (31 stores)
 │   ├── personalShoppingAgent.ts            Shopper autopilot negotiation runner
 │   └── negotiateProximityRetailDeal.json   Tool calling schema for LLM agents
 ├── scripts/
-│   └── muse-check.ts                       Live health test for Muse Spark API & models
+│   ├── muse-check.ts                       Live health test for Muse Spark API & models
+│   └── seed-db.ts                          MongoDB inventory seeding script
 ├── server/
 │   ├── server.ts                           Backend HTTP API & proximity engine
 │   ├── muse.ts                             Meta Muse Spark client & guardrail engine
-│   ├── muse.test.ts                        15 safety & adversarial guardrail tests
-│   └── db.ts                               MongoDB client with in-memory fallback
+│   ├── muse.test.ts                        17 safety & adversarial guardrail tests
+│   ├── db.ts                               MongoDB client with in-memory fallback
+│   └── routes/
+│       └── paypal.ts                       PayPal Commerce Platform order & capture routes
 ├── src/
 │   ├── App.tsx                             Main shell, device views & animation flow
 │   ├── components/
@@ -367,26 +454,31 @@ metapase/
 │   │   ├── MerchantHubModal.tsx            Store management, stock, sales & AI insights
 │   │   ├── WishlistModal.tsx               Voice/text natural language wish input
 │   │   ├── PasskeyAuthModal.tsx            WebAuthn biometric checkout modal
-│   │   ├── DealCarousel.tsx                Physics-driven compass-aligned carousel
+│   │   ├── PayPalPaymentContainer.tsx      PayPal Commerce Platform pay rails wrapper
+│   │   ├── PayPalPayLaterButton.tsx        Pay in 4 / Pay Monthly installment button
+│   │   ├── A2ATransactionAuditLedger.tsx   Agent-to-agent transaction audit log grid
+│   │   ├── DealCarousel.tsx                Physics-driven compass-aligned carousel (Shopify badges)
+│   │   ├── DealCard.tsx                    Deal card with Shopify Virtual Presence badge
 │   │   ├── DigitalCompassBar.tsx           Directional compass & store bearings
-│   │   └── DealDetail.tsx                  Full deal breakdown & negotiation ledger
+│   │   └── DealDetail.tsx                  Full deal breakdown & negotiation ledger (Shopify banner)
 │   ├── config/
-│   │   ├── malls.ts                        30+ mapped stores across 4 Gauteng malls
-│   │   ├── products.ts                     Retail catalogue with SKUs & floor prices
+│   │   ├── malls.ts                        31 mapped stores + 3 virtual transit hubs
+│   │   ├── products.ts                     Retail catalogue + 4 Shopify virtual drop products
 │   │   └── venue.ts                        Beacon UUIDs, thresholds & timings
 │   ├── hooks/
 │   │   ├── useDealEngine.ts                Autonomous scan, bargain & buy orchestrator
-│   │   ├── useCommerce.ts                  Cart, parked deals, wallet balance & orders
+│   │   ├── useCommerce.ts                  Cart, parked deals, wallet balance, orders & Shopify settlement
 │   │   ├── useBeaconScanner.ts             Live Web Bluetooth iBeacon scanning
 │   │   ├── useGeolocation.ts               GPS outdoor positioning
 │   │   └── useHeading.ts                   Device orientation & digital compass
 │   ├── lib/
 │   │   ├── muse.ts                         Client-side Muse Spark caller & circuit breaker
+│   │   ├── shopifyAdapter.ts               Shopify public catalog ingestion & 75% floor margin engine
 │   │   ├── demoStore.ts                    In-browser merchant store with real stock tracking
 │   │   ├── wishParse.ts                    Rule-based & AI natural language wish parser
 │   │   ├── metaPay.ts                      WebAuthn passkey registration & assertion signing
 │   │   ├── positioning.ts                  Indoor/outdoor location sensor fusion
-│   │   └── trilateration.ts                Least-squares RSSI positioning solver
+│   │   └── trilateration.ts               Least-squares RSSI positioning solver
 │   └── pages/                              DiscoverPage, CartPage, SettingsPage, TimelinePage
 ├── DEMO_SCRIPT.md                          3-minute video demo plan & script
 ├── HACKATHON.md                            Meta AI Hackathon submission notes & rubric mapping
@@ -420,18 +512,30 @@ The app automatically adapts to the detected device or form factor (also selecta
 
 ## Roadmap & Completed milestones
 
-### ✅ Completed Milestones
-- [x] **Meta Muse Spark Integration:** Two-sided autonomous bargaining with model-driven copy and mathematical floor price guardrails.
-- [x] **Muse Spark Open Compatibility:** Fully tested compatibility with `meta-models/muse-spark-open-1026` hosted via OpenAI-compatible endpoints.
-- [x] **Natural Language Wishlist:** Voice and text intent parsing with automatic budget, category, and keyword extraction.
-- [x] **Stock-Aware Merchant Hub:** Live shelf counts, voucher generation and redemption, real-time sales feed, and AI inventory insights.
-- [x] **MongoDB Persistence:** Scalable cloud database layer with zero-config in-memory fallback.
-- [x] **Multi-Form Factor UI:** Tailored interfaces for Desktop, Mobile, Smartwatch, AR Glasses HUD, Car, and Voice.
+### ✅ Completed Milestones (Hackathon Sprint — Oct 26 → Nov 4, 2026)
+
+- [x] **Meta Muse Spark 1.3 Integration:** Two-sided autonomous bargaining with model-driven copy and mathematical floor price guardrails across 31 merchant agents.
+- [x] **Muse Spark Open Compatibility:** Fully tested with `meta-models/muse-spark-open-1026` on Baseten / any OpenAI-compatible endpoint.
+- [x] **Personal Agent Onboarding:** One-tap agent creation, R1,000 welcome credit promo, named agent personality, and autopilot activation.
+- [x] **Natural Language Wishlist:** Voice and text intent parsing with automatic budget, category, and keyword extraction; shopper budget always overrides AI inference.
+- [x] **31 Autonomous Merchant Agents:** All 31 mapped stores fully staffed with live Muse-driven agent personalities.
+- [x] **Stock-Aware Merchant Hub:** Live shelf counts, voucher generation and redemption, real-time sales feed, and AI inventory insights ("Ask Muse").
+- [x] **Full MongoDB Persistence:** Transaction receipts, passkey credentials, inventory, session, and audit data — all durable with zero-config in-memory fallback.
+- [x] **WebAuthn Passkey Payments:** Biometric checkout (Face ID, Touch ID, Windows Hello) with cryptographic challenge-response and sandbox fallback.
+- [x] **PayPal Commerce Platform Pay Later:** `@paypal/react-paypal-js` rails alongside Muse flow; Pay in 4, Pay Monthly installments, and standard checkout in a single `PayPalPaymentContainer`.
+- [x] **A2A Transaction Audit Ledger:** Agent-to-agent transaction log with ag-grid community data grid, full receipt history, and Vercel CORS.
+- [x] **Virtual Retail Presence (Shopify):** 3 transit hub anchors (Park Station, FNB Stadium, Sandton Gautrain); Shopify public catalog ingestion; strict 75% floor margin isolation; cyan-neon fulfillment badges.
+- [x] **Explicit Intent Gate:** Deal cards only auto-park when the user has an active wishlist item or declared shopping intent.
+- [x] **Multi-Form Factor UI:** 6 tailored device layouts — Desktop, Mobile, Smartwatch, AR Glasses HUD, Car Dashboard, and Voice.
+- [x] **Demo Mode Auto-Fallback:** Full in-browser simulation with real stock decrements and rules-based negotiation; no API key or backend required.
+- [x] **Vercel + Render Deployment:** Serverless `api/muse/[action].ts` on Vercel; persistent Node.js backend on Render with MongoDB Atlas.
 
 ### 🔮 Future Roadmap
-- [ ] **Native Mobile Companion:** Background Bluetooth beacon scanning for iOS and Android when app is suspended.
+- [ ] **Native Mobile Companion:** Background Bluetooth beacon scanning for iOS and Android when the app is suspended.
 - [ ] **Multi-Agent Cross-Store Auctions:** Shopper agents concurrently negotiating across multiple nearby stores for the lowest price.
-- [ ] **Live Production Payment Gateways:** Direct integration with Stripe and regional instant EFT settlement rails.
+- [ ] **Live Production Payment Gateways:** Promote PayPal from sandbox to production; add regional instant EFT settlement rails.
+- [ ] **Shopify Webhook Live Sync:** Replace emulated inventory decrements with verified Shopify webhook event subscriptions.
+- [ ] **AR Spatial Anchors:** Pin virtual store overlays to real-world coordinates via WebXR for Meta Quest / smart glasses.
 
 ## Contributing
 
@@ -451,5 +555,6 @@ All rights reserved by the authors for the Meta AI Hackathon 2026. Distributed u
 ---
 
 <div align="center">
-Built with ❤️ for the Meta Global AI Developer Hackathon 2026
+Built with ❤️ for the Meta Global AI Developer Hackathon 2026<br/>
+Rebuilt from <a href="https://github.com/gugunyathi/autocomm.git">AutoComm</a> — cloned, stripped, and re-engineered for Meta AI.
 </div>
