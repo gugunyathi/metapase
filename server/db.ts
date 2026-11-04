@@ -445,21 +445,62 @@ export async function initDatabase(): Promise<{ mode: 'mongodb' | 'in_memory'; d
       await mongoDb.collection('credit_plans').createIndex({ planId: 1 }, { unique: true });
       await mongoDb.collection('credit_plans').createIndex({ userId: 1 });
 
-      // Seed stores and inventory if empty
-      const storeCount = await mongoDb.collection('stores').countDocuments();
-      if (storeCount === 0) {
-        const storeDocs = Array.from(inMemoryDb.stores.values());
-        if (storeDocs.length > 0) {
-          await mongoDb.collection('stores').insertMany(storeDocs);
+      // Upsert stores and inventory so all real catalog assets are always present
+      for (const store of inMemoryDb.stores.values()) {
+        await mongoDb.collection('stores').updateOne(
+          { storeId: store.storeId },
+          { $set: store },
+          { upsert: true }
+        );
+      }
+
+      for (const item of inMemoryDb.inventory.values()) {
+        await mongoDb.collection('inventory').updateOne(
+          { sku: item.sku },
+          { $set: item },
+          { upsert: true }
+        );
+      }
+
+      // Seed default user, agent, wishlists, transactions, credit plans if empty
+      const userCount = await mongoDb.collection('users').countDocuments();
+      if (userCount === 0) {
+        for (const u of inMemoryDb.users.values()) {
+          await mongoDb.collection('users').insertOne(u);
         }
       }
 
-      const invCount = await mongoDb.collection('inventory').countDocuments();
-      if (invCount === 0) {
-        const invDocs = Array.from(inMemoryDb.inventory.values());
-        if (invDocs.length > 0) {
-          await mongoDb.collection('inventory').insertMany(invDocs);
+      const agentCount = await mongoDb.collection('agents').countDocuments();
+      if (agentCount === 0) {
+        for (const a of inMemoryDb.agents.values()) {
+          await mongoDb.collection('agents').insertOne(a);
         }
+      }
+
+      const wishCount = await mongoDb.collection('wishlists').countDocuments();
+      if (wishCount === 0) {
+        for (const w of inMemoryDb.wishlists.values()) {
+          await mongoDb.collection('wishlists').insertOne(w);
+        }
+      }
+
+      const txCount = await mongoDb.collection('transactions').countDocuments();
+      if (txCount === 0) {
+        for (const t of inMemoryDb.transactions.values()) {
+          await mongoDb.collection('transactions').insertOne(t);
+        }
+      }
+
+      const planCount = await mongoDb.collection('credit_plans').countDocuments();
+      if (planCount === 0) {
+        for (const p of inMemoryDb.creditPlans.values()) {
+          await mongoDb.collection('credit_plans').insertOne(p);
+        }
+      }
+
+      const actCount = await mongoDb.collection('activities').countDocuments();
+      if (actCount === 0 && inMemoryDb.activities.length > 0) {
+        await mongoDb.collection('activities').insertMany(inMemoryDb.activities);
       }
 
       return { mode: 'mongodb', dbName: 'metapase' };
@@ -554,7 +595,7 @@ export const db = {
   wishlists: {
     async listByUser(userId: string): Promise<DbWishlistItem[]> {
       if (isConnected && mongoDb) {
-        return (await mongoDb.collection('wishlists').find({ userId }).toArray()) as DbWishlistItem[];
+        return (await mongoDb.collection('wishlists').find({ userId }).toArray()) as unknown as DbWishlistItem[];
       }
       return Array.from(inMemoryDb.wishlists.values()).filter(w => w.userId === userId);
     },
@@ -587,13 +628,13 @@ export const db = {
   stores: {
     async list(): Promise<DbMerchantStore[]> {
       if (isConnected && mongoDb) {
-        return (await mongoDb.collection('stores').find({}).toArray()) as DbMerchantStore[];
+        return (await mongoDb.collection('stores').find({}).toArray()) as unknown as DbMerchantStore[];
       }
       return Array.from(inMemoryDb.stores.values());
     },
     async findByStoreId(storeId: string): Promise<DbMerchantStore | null> {
       if (isConnected && mongoDb) {
-        return (await mongoDb.collection('stores').findOne({ storeId })) as DbMerchantStore | null;
+        return (await mongoDb.collection('stores').findOne({ storeId })) as unknown as DbMerchantStore | null;
       }
       return inMemoryDb.stores.get(storeId) ?? Array.from(inMemoryDb.stores.values()).find(s => s.storeId.endsWith(storeId) || storeId.endsWith(s.storeId)) ?? null;
     },
@@ -611,7 +652,7 @@ export const db = {
   inventory: {
     async listAll(): Promise<DbProductInventory[]> {
       if (isConnected && mongoDb) {
-        return (await mongoDb.collection('inventory').find({}).toArray()) as DbProductInventory[];
+        return (await mongoDb.collection('inventory').find({}).toArray()) as unknown as DbProductInventory[];
       }
       return Array.from(inMemoryDb.inventory.values());
     },
@@ -619,7 +660,7 @@ export const db = {
       if (isConnected && mongoDb) {
         return (await mongoDb.collection('inventory').find({
           $or: [{ storeId }, { storeId: { $regex: `${storeId}$` } }]
-        }).toArray()) as DbProductInventory[];
+        }).toArray()) as unknown as DbProductInventory[];
       }
       return Array.from(inMemoryDb.inventory.values()).filter(p => p.storeId === storeId || p.storeId.endsWith(storeId) || storeId.endsWith(p.storeId));
     },
@@ -667,13 +708,13 @@ export const db = {
   transactions: {
     async list(): Promise<DbTransactionReceipt[]> {
       if (isConnected && mongoDb) {
-        return (await mongoDb.collection('transactions').find({}).sort({ timestamp: -1 }).toArray()) as DbTransactionReceipt[];
+        return (await mongoDb.collection('transactions').find({}).sort({ timestamp: -1 }).toArray()) as unknown as DbTransactionReceipt[];
       }
       return Array.from(inMemoryDb.transactions.values()).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     },
     async listByUser(userId: string): Promise<DbTransactionReceipt[]> {
       if (isConnected && mongoDb) {
-        return (await mongoDb.collection('transactions').find({ userId }).sort({ timestamp: -1 }).toArray()) as DbTransactionReceipt[];
+        return (await mongoDb.collection('transactions').find({ userId }).sort({ timestamp: -1 }).toArray()) as unknown as DbTransactionReceipt[];
       }
       return Array.from(inMemoryDb.transactions.values())
         .filter(t => t.userId === userId)
@@ -683,7 +724,7 @@ export const db = {
       if (isConnected && mongoDb) {
         return (await mongoDb.collection('transactions').find({
           $or: [{ storeId }, { storeId: { $regex: `${storeId}$` } }]
-        }).sort({ timestamp: -1 }).toArray()) as DbTransactionReceipt[];
+        }).sort({ timestamp: -1 }).toArray()) as unknown as DbTransactionReceipt[];
       }
       return Array.from(inMemoryDb.transactions.values())
         .filter(t => t.storeId === storeId || t.storeId.endsWith(storeId) || storeId.endsWith(t.storeId))
@@ -757,7 +798,7 @@ export const db = {
         if (filters?.storeId) query.storeId = filters.storeId;
         if (filters?.userId) query.userId = filters.userId;
         if (filters?.type) query.type = filters.type;
-        return (await mongoDb.collection('activities').find(query).sort({ timestamp: -1 }).limit(limit).toArray()) as DbActivityLog[];
+        return (await mongoDb.collection('activities').find(query).sort({ timestamp: -1 }).limit(limit).toArray()) as unknown as DbActivityLog[];
       }
       return inMemoryDb.activities
         .filter(a => {
@@ -774,7 +815,7 @@ export const db = {
   creditPlans: {
     async listByUser(userId: string): Promise<DbInstallmentPlan[]> {
       if (isConnected && mongoDb) {
-        return (await mongoDb.collection('credit_plans').find({ userId }).sort({ createdAt: -1 }).toArray()) as DbInstallmentPlan[];
+        return (await mongoDb.collection('credit_plans').find({ userId }).sort({ createdAt: -1 }).toArray()) as unknown as DbInstallmentPlan[];
       }
       return Array.from(inMemoryDb.creditPlans.values())
         .filter(p => p.userId === userId)

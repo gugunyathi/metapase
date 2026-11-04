@@ -194,6 +194,7 @@ export default function App() {
   const [maxBudgetZAR, setMaxBudgetZAR] = useState<number>(1500);
   const [autopilot, setAutopilot] = useState<boolean>(true);
   const [dataSource, setDataSource] = useState<DataSource>(DEFAULT_DATA_SOURCE);
+  const [backendToast, setBackendToast] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pinRequest, setPinRequest] = useState<PinRequest | null>(null);
@@ -521,6 +522,18 @@ export default function App() {
     }, celebrations.length > 2 ? 160 : 700);
   }, [celebrations, bumpCorner, depart]);
 
+  // One decision for every agreed deal: buy it or park it, according to what the shopper asked for. No card waits for a tap.
+  const decidedRef = useRef<Set<string>>(new Set());
+
+  const handleBackendUnreachable = useCallback(() => {
+    setDataSource('demo');
+    setDeparted(new Set());
+    decidedRef.current.clear();
+    setSelectedId(null);
+    setBackendToast('Backend server offline — auto-switched to demo stores');
+    addLog('SYSTEM', 'Backend unreachable at http://localhost:3000 — automatically switched to demo stores so you can shop immediately.', 'warning');
+  }, [addLog]);
+
   const engine = useDealEngine({
     readings: estimate.readings,
     mode,
@@ -533,11 +546,9 @@ export default function App() {
     proximityZone: PROXIMITY_ZONES[proximityMode].label,
     pursue,
     onLog: addLog,
-    onEvent: emitEvent
+    onEvent: emitEvent,
+    onBackendUnreachable: handleBackendUnreachable
   });
-
-  // One decision for every agreed deal: buy it or park it, according to what the shopper asked for. No card waits for a tap.
-  const decidedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!agentActive) return;
     const dealsNow = Object.values(engine.deals);
@@ -747,6 +758,7 @@ export default function App() {
       dataSource={dataSource}
       matchRadius={matchRadiusM}
       betweenDeals={Object.keys(engine.deals).length > 0}
+      onSwitchToDemo={() => changeDataSource('demo')}
     />
   );
 
@@ -1227,6 +1239,35 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {backendToast && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 text-xs text-amber-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span className="truncate">{backendToast}. Simulation active with 31 stores & real products.</span>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setBackendToast(null);
+                changeDataSource('live');
+              }}
+              className="text-[11px] font-bold underline hover:text-white"
+            >
+              Retry Live Backend
+            </button>
+            <button
+              type="button"
+              onClick={() => setBackendToast(null)}
+              className="text-slate-400 hover:text-white text-base leading-none"
+              aria-label="Dismiss banner"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className={`mx-auto max-w-[1400px] pb-36 pt-4 sm:px-6 sm:pt-6 ${page === 'home' && activeView === 'watch' ? 'px-2' : 'px-3 min-[400px]:px-4'}`}>
         <div key={page} className="metapase-fade-in">{renderPage()}</div>

@@ -192,6 +192,7 @@ interface PlaceholderDealCardProps {
   matchRadius?: number;
   /** True when deals were seen a moment ago and the agent has already bought or parked them. Shows a short, steady banner instead of the catalog. */
   betweenDeals?: boolean;
+  onSwitchToDemo?: () => void;
 }
 
 export default function PlaceholderDealCard({
@@ -200,12 +201,14 @@ export default function PlaceholderDealCard({
   dataSource,
   matchRadius = 50,
   betweenDeals = false,
+  onSwitchToDemo,
 }: PlaceholderDealCardProps) {
+  const isBackendDown = serviceOnline === false && dataSource === 'live';
   const statusLine =
-    serviceOnline === false && dataSource === 'live'
-      ? 'Backend unreachable \u2014 switch to demo stores in Settings'
+    isBackendDown
+      ? 'Backend unreachable — click to switch to demo stores or start server'
       : isScanning
-      ? 'Scanning for Bluetooth beacons and GPS matches\u2026'
+      ? 'Scanning for Bluetooth beacons and GPS matches…'
       : `Ready to match stores within ${matchRadius} m`;
 
   if (betweenDeals) {
@@ -231,7 +234,9 @@ export default function PlaceholderDealCard({
         <div className="flex items-center gap-3">
           <span
             className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${
-              isScanning
+              isBackendDown
+                ? 'bg-amber-400/20 text-amber-300'
+                : isScanning
                 ? 'bg-emerald-400/20 text-emerald-300'
                 : 'bg-white/5 text-slate-400'
             }`}
@@ -244,14 +249,25 @@ export default function PlaceholderDealCard({
           </div>
         </div>
 
-        {/* Category icons showing supported stores */}
-        <div className="hidden sm:flex items-center gap-1.5" title="Tracking across categories">
-          {(['apparel', 'footwear', 'groceries', 'electronics', 'beauty'] as DealCategory[]).map(
-            cat => (
-              <CategoryDot key={cat} category={cat} />
-            )
-          )}
-        </div>
+        {isBackendDown && onSwitchToDemo ? (
+          <button
+            type="button"
+            onClick={onSwitchToDemo}
+            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-400 to-amber-300 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:opacity-90 shadow-sm shrink-0"
+          >
+            <Zap className="h-3.5 w-3.5 fill-current" />
+            <span>Switch to Demo Stores</span>
+          </button>
+        ) : (
+          /* Category icons showing supported stores */
+          <div className="hidden sm:flex items-center gap-1.5" title="Tracking across categories">
+            {(['apparel', 'footwear', 'groceries', 'electronics', 'beauty'] as DealCategory[]).map(
+              cat => (
+                <CategoryDot key={cat} category={cat} />
+              )
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Section title ── */}

@@ -25,6 +25,8 @@ export interface DealEngineOptions {
   pursue?: (deal: Deal) => { budgetZAR: number } | null;
   onLog: LogFn;
   onEvent?: (event: EngineEvent) => void;
+  /** Called the first time a live-backend scan fails so the app can auto-switch to demo stores. */
+  onBackendUnreachable?: () => void;
 }
 
 export interface DealEngine {
@@ -85,11 +87,21 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
     commit(prev => (prev[storeId] ? { ...prev, [storeId]: { ...prev[storeId], ...changes } } : prev));
   }, [commit]);
 
+  const autoSwitchedRef = useRef<boolean>(false);
+
   const markService = useCallback((online: boolean, detail: string) => {
-    const { onLog, dataSource } = optionsRef.current;
+    const { onLog, dataSource, onBackendUnreachable } = optionsRef.current;
     if (serviceOnlineRef.current === online) return;
-    if (!online) onLog('SYSTEM', `Can't reach the deal service at ${getClient(dataSource).label}: ${detail}`, 'error');
-    else if (serviceOnlineRef.current === false) onLog('SYSTEM', 'Deal service is reachable again.', 'success');
+    if (!online) {
+      onLog('SYSTEM', `Can't reach the deal service at ${getClient(dataSource).label}: ${detail}`, 'error');
+      // Auto-switch to demo stores on first backend failure (live mode only)
+      if (dataSource === 'live' && !autoSwitchedRef.current && onBackendUnreachable) {
+        autoSwitchedRef.current = true;
+        onBackendUnreachable();
+      }
+    } else if (serviceOnlineRef.current === false) {
+      onLog('SYSTEM', 'Deal service is reachable again.', 'success');
+    }
     serviceOnlineRef.current = online;
     setServiceOnline(online);
   }, []);
@@ -386,7 +398,13 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
     setServiceOnline(null);
     serviceOnlineRef.current = null;
     rangeKeyRef.current = null;
+    autoSwitchedRef.current = false;
   }, [commit]);
+
+  useEffect(() => {
+    rangeKeyRef.current = null;
+    void scan();
+  }, [options.dataSource, scan]);
 
   useEffect(() => {
     if (!options.autopilot) return;
