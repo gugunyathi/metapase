@@ -29,6 +29,10 @@ interface DealCarouselProps {
   onFocusChange: (storeId: string) => void;
   onNegotiate: (storeId: string) => void;
   onPay: (storeId: string) => void;
+  onBuyNow?: (deal: Deal, priceZAR: number) => void;
+  onBuyLater?: (deal: Deal, priceZAR: number) => void;
+  onPark?: (deal: Deal, priceZAR: number, bestOfferZAR: number | null) => void;
+  parkedCampaignIds?: Set<string>;
   emptyState: ReactNode;
   compact?: boolean;
   leading?: ReactNode;
@@ -109,7 +113,7 @@ const aheadIndexFor = (items: CarouselItem[], heading: number): number => {
   return best;
 };
 
-export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, pinRequest, onFocusChange, onNegotiate, onPay, emptyState, compact = false, leading, trailing, flashId = null, onOpen }: DealCarouselProps) {
+export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, pinRequest, onFocusChange, onNegotiate, onPay, onBuyNow, onBuyLater, onPark, parkedCampaignIds, emptyState, compact = false, leading, trailing, flashId = null, onOpen }: DealCarouselProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -471,6 +475,10 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
                           }}
                           onNegotiate={onNegotiate}
                           onPay={onPay}
+                          onBuyNow={onBuyNow}
+                          onBuyLater={onBuyLater}
+                          onPark={onPark}
+                          isParked={parkedCampaignIds?.has(item.deal.ad.campaignId) ?? false}
                         />
                       </div>
                     </div>

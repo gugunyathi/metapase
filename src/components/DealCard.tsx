@@ -1,4 +1,4 @@
-import { CircleCheck, Cpu, Footprints, Handshake, LoaderCircle, Navigation2, Shirt, ShoppingBasket, Sparkles, Wallet } from 'lucide-react';
+import { CircleCheck, Cpu, CreditCard, Eye, Footprints, Handshake, LoaderCircle, Navigation2, Shirt, ShoppingBasket, Sparkles, SquareParking, Wallet } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Deal, DealCategory, DealStatus, NodeReading } from '../types/metapase';
 import { MAX_ROUNDS } from '../config/venue';
@@ -34,11 +34,15 @@ interface DealCardProps {
   onSelect: (storeId: string) => void;
   onNegotiate: (storeId: string) => void;
   onPay: (storeId: string) => void;
+  onBuyNow?: (deal: Deal, priceZAR: number) => void;
+  onBuyLater?: (deal: Deal, priceZAR: number) => void;
+  onPark?: (deal: Deal, priceZAR: number, bestOfferZAR: number | null) => void;
+  isParked?: boolean;
 }
 
 const BUTTON = 'inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed';
 
-export default function DealCard({ deal, reading, heading, selected, matchesIntent, variant = 'full', onSelect, onNegotiate, onPay }: DealCardProps) {
+export default function DealCard({ deal, reading, heading, selected, matchesIntent, variant = 'full', onSelect, onNegotiate, onPay, onBuyNow, onBuyLater, onPark, isParked }: DealCardProps) {
   const style = CATEGORY_STYLE[deal.category];
   const Icon = style.icon;
   const status = STATUS_META[deal.status];
@@ -46,6 +50,7 @@ export default function DealCard({ deal, reading, heading, selected, matchesInte
   const relative = reading && reading.bearingDeg !== null ? signedAngleDelta(reading.bearingDeg, heading) : null;
   const sticker = deal.ad.stickerPriceZAR;
   const price = deal.negotiatedPriceZAR;
+  const activePrice = price ?? sticker;
   const savingsPct = price !== null && sticker > 0 ? Math.round((1 - price / sticker) * 100) : null;
   const lastRound = deal.rounds[deal.rounds.length - 1];
   const roundNumber = Math.min(deal.rounds.length + 1, MAX_ROUNDS);
@@ -61,25 +66,140 @@ export default function DealCard({ deal, reading, heading, selected, matchesInte
   const renderAction = () => {
     switch (deal.status) {
       case 'negotiating':
-        return <button type="button" disabled className={`${BUTTON} bg-white/5 text-slate-300`}><LoaderCircle className="h-4 w-4 animate-spin" />Round {roundNumber} of {MAX_ROUNDS}</button>;
-      case 'agreed':
-        return <button type="button" onClick={() => onPay(deal.storeId)} className={`${BUTTON} bg-amber-300 text-slate-950 hover:bg-amber-200`}><Wallet className="h-4 w-4" />Pay {formatZAR(price ?? sticker)}</button>;
+        return (
+          <button type="button" disabled className={`${BUTTON} bg-white/5 text-slate-300`}>
+            <LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" />
+            Agent Negotiating (Round {roundNumber} of {MAX_ROUNDS})
+          </button>
+        );
       case 'paying':
-        return <button type="button" disabled className={`${BUTTON} bg-amber-300/60 text-slate-950`}><LoaderCircle className="h-4 w-4 animate-spin" />Confirming payment</button>;
+        return (
+          <button type="button" disabled className={`${BUTTON} bg-amber-300/60 text-slate-950 font-bold`}>
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+            Confirming payment...
+          </button>
+        );
       case 'paid':
-        return <button type="button" disabled className={`${BUTTON} bg-sky-400/15 text-sky-200`}><CircleCheck className="h-4 w-4" />Paid</button>;
+        return (
+          <button type="button" disabled className={`${BUTTON} bg-sky-400/15 text-sky-200 border border-sky-400/30`}>
+            <CircleCheck className="h-4 w-4 text-sky-400" />
+            Paid {deal.referenceId ? `· ${deal.referenceId}` : ''}
+          </button>
+        );
+      case 'agreed':
+        return (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPay(deal.storeId);
+              }}
+              className={`${BUTTON} bg-amber-300 text-slate-950 hover:bg-amber-200 shadow-md font-bold`}
+            >
+              <Wallet className="h-4 w-4" />
+              Pay {formatZAR(activePrice)} Now
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onBuyLater) onBuyLater(deal, activePrice);
+                  else onSelect(deal.storeId);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-400/20 transition"
+              >
+                <CreditCard className="h-3.5 w-3.5 text-amber-300" />
+                Buy Later
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onPark) onPark(deal, activePrice, lastRound?.agentOfferZAR ?? null);
+                  else onSelect(deal.storeId);
+                }}
+                disabled={isParked}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 transition disabled:opacity-40"
+              >
+                <SquareParking className="h-3.5 w-3.5 text-amber-300" />
+                {isParked ? 'Parked' : 'Park'}
+              </button>
+            </div>
+          </div>
+        );
       default:
         return (
-          <button type="button" onClick={() => onNegotiate(deal.storeId)} disabled={!inRange} className={`${BUTTON} bg-white/10 text-white hover:bg-white/15 disabled:opacity-50`}>
-            <Handshake className="h-4 w-4" />{!inRange ? 'Out of range' : deal.status === 'discovered' ? 'Negotiate now' : 'Try again'}
-          </button>
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNegotiate(deal.storeId);
+                }}
+                disabled={!inRange}
+                className={`${BUTTON} bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 hover:bg-emerald-500/30 text-xs py-2.5 font-bold disabled:opacity-50`}
+              >
+                <Handshake className="h-4 w-4 text-emerald-300" />
+                {!inRange ? 'Out of range' : deal.status === 'discovered' ? 'Negotiate' : 'Re-negotiate'}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onBuyNow) onBuyNow(deal, activePrice);
+                  else onSelect(deal.storeId);
+                }}
+                disabled={!inRange}
+                className={`${BUTTON} bg-amber-300 text-slate-950 hover:bg-amber-200 text-xs py-2.5 font-bold shadow-md disabled:opacity-50`}
+              >
+                <Wallet className="h-4 w-4" />
+                Buy Now
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onBuyLater) onBuyLater(deal, activePrice);
+                  else onSelect(deal.storeId);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-400/20 transition"
+              >
+                <CreditCard className="h-3.5 w-3.5 text-amber-300" />
+                Buy Later
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onPark) onPark(deal, activePrice, lastRound?.agentOfferZAR ?? null);
+                  else onSelect(deal.storeId);
+                }}
+                disabled={isParked}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 transition disabled:opacity-40"
+              >
+                <SquareParking className="h-3.5 w-3.5 text-amber-300" />
+                {isParked ? 'Parked' : 'Park'}
+              </button>
+            </div>
+          </div>
         );
     }
   };
 
   if (variant === 'compact') {
     return (
-      <article className={`flex items-center gap-3 rounded-2xl border p-3 transition ${selected ? 'border-emerald-400/50 bg-[#0b1c1b]' : 'border-white/[0.06] bg-[#0c1220]'} ${matchesIntent ? '' : 'brightness-75 saturate-50'}`}>
+      <article
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('button')) return;
+          onSelect(deal.storeId);
+        }}
+        className={`flex items-center gap-3 rounded-2xl border p-3 transition cursor-pointer ${selected ? 'border-emerald-400/50 bg-[#0b1c1b]' : 'border-white/[0.06] bg-[#0c1220] hover:border-emerald-400/30'} ${matchesIntent ? '' : 'brightness-75 saturate-50'}`}
+      >
         <button type="button" onClick={() => onSelect(deal.storeId)} aria-pressed={selected} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-2 focus-visible:outline-emerald-300">
           {deal.ad.imageUrl ? (
             <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-800">
@@ -97,7 +217,7 @@ export default function DealCard({ deal, reading, heading, selected, matchesInte
           </span>
         </button>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className="text-sm font-bold tabular-nums text-amber-200">{formatZAR(price ?? sticker)}</span>
+          <span className="text-sm font-bold tabular-nums text-amber-200">{formatZAR(activePrice)}</span>
           {deal.status === 'agreed'
             ? <button type="button" onClick={() => onPay(deal.storeId)} className="rounded-full bg-amber-300 px-3 py-1 text-xs font-semibold text-slate-950 hover:bg-amber-200">Pay</button>
             : <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.chip}`}>{status.label}</span>}
@@ -107,8 +227,14 @@ export default function DealCard({ deal, reading, heading, selected, matchesInte
   }
 
   return (
-    <article className={`flex flex-col overflow-hidden rounded-3xl border bg-slate-900 transition ${selected ? 'border-emerald-400/50 shadow-[0_0_0_1px_rgba(52,211,153,0.2),0_24px_60px_-24px_rgba(16,185,129,0.45)]' : 'border-white/[0.06] hover:border-white/15'} ${matchesIntent ? '' : 'brightness-75 saturate-50'}`}>
-      <button type="button" onClick={() => onSelect(deal.storeId)} aria-pressed={selected} className="group relative h-44 overflow-hidden bg-slate-950 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-300">
+    <article
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('button')) return;
+        onSelect(deal.storeId);
+      }}
+      className={`group flex flex-col overflow-hidden rounded-3xl border bg-slate-900 transition cursor-pointer select-none ${selected ? 'border-emerald-400/50 shadow-[0_0_0_1px_rgba(52,211,153,0.2),0_24px_60px_-24px_rgba(16,185,129,0.45)]' : 'border-white/[0.06] hover:border-emerald-400/40 hover:shadow-[0_12px_36px_-12px_rgba(16,185,129,0.25)]'} ${matchesIntent ? '' : 'brightness-75 saturate-50'}`}
+    >
+      <div className="group relative h-44 overflow-hidden bg-slate-950 text-left">
         {deal.ad.imageUrl ? (
           <>
             <img src={deal.ad.imageUrl} alt={deal.ad.itemName} className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
@@ -130,16 +256,19 @@ export default function DealCard({ deal, reading, heading, selected, matchesInte
           {distanceText} {directionText}
         </span>
         <span className={`absolute bottom-4 left-4 rounded-full px-2.5 py-1 text-[11px] font-semibold ${status.chip}`}>{status.label}</span>
-        <span className="sr-only">Open details for {deal.ad.itemName}</span>
-      </button>
+        <span className="absolute bottom-4 right-4 inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-slate-200 backdrop-blur transition group-hover:border-emerald-400/50 group-hover:bg-emerald-500/20 group-hover:text-emerald-300">
+          <Eye className="h-3.5 w-3.5" />
+          <span>View Deal</span>
+        </span>
+      </div>
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div>
-          <h3 className="line-clamp-2 min-h-[2.75em] text-[15px] font-semibold leading-snug text-white">{deal.ad.itemName}</h3>
+          <h3 className="line-clamp-2 min-h-[2.75em] text-[15px] font-semibold leading-snug text-white group-hover:text-emerald-300 transition-colors">{deal.ad.itemName}</h3>
           <p className="truncate text-xs text-slate-400">{style.label}</p>
         </div>
         <div className="flex items-end justify-between gap-3">
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold tabular-nums text-amber-200">{formatZAR(price ?? sticker)}</span>
+            <span className="text-2xl font-extrabold tabular-nums text-amber-200">{formatZAR(activePrice)}</span>
             {price !== null && <span className="text-sm tabular-nums text-slate-500 line-through">{formatZAR(sticker)}</span>}
           </div>
           {savingsPct !== null && savingsPct > 0 && <span className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-bold text-emerald-300">{savingsPct}% off</span>}

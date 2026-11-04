@@ -16,6 +16,7 @@ interface DealDetailProps {
   isParked: boolean;
   isWatched: boolean;
   currentDeviceView?: string;
+  initialShowPayPal?: boolean;
   onClose: () => void;
   onPay: (storeId: string) => void;
   onPayWithPayPal?: (storeId: string, referenceId: string) => void;
@@ -35,10 +36,10 @@ const sideText = (relative: number | null): string => {
   return `${Math.round(angle)}° to your ${relative < 0 ? 'left' : 'right'}`;
 };
 
-export default function DealDetail({ deal, reading, heading, maxBudgetZAR, matchesIntent, isParked, isWatched, currentDeviceView, onClose, onPay, onPayWithPayPal, onNegotiate, onBuyNow, onPark, onWatch }: DealDetailProps) {
+export default function DealDetail({ deal, reading, heading, maxBudgetZAR, matchesIntent, isParked, isWatched, currentDeviceView, initialShowPayPal = false, onClose, onPay, onPayWithPayPal, onNegotiate, onBuyNow, onPark, onWatch }: DealDetailProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const [buying, setBuying] = useState<boolean>(false);
-  const [showPayPal, setShowPayPal] = useState<boolean>(false);
+  const [showPayPal, setShowPayPal] = useState<boolean>(initialShowPayPal);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -88,11 +89,11 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
       case 'agreed':
         return (
           <div className="space-y-2 w-full">
-            <button type="button" onClick={() => { onPay(deal.storeId); onClose(); }} className={`${BUTTON} w-full bg-amber-300 text-slate-950 hover:bg-amber-200 shadow-md`}>
-              <Wallet className="h-4 w-4" />Pay {formatZAR(price)} (Biometric Passkey)
+            <button type="button" onClick={() => { onPay(deal.storeId); onClose(); }} className={`${BUTTON} w-full bg-amber-300 text-slate-950 hover:bg-amber-200 shadow-md font-bold`}>
+              <Wallet className="h-4 w-4" />Buy Now for {formatZAR(price)} (Biometric Passkey)
             </button>
             <button type="button" onClick={() => setShowPayPal(true)} className={`${BUTTON} w-full bg-amber-400/20 border border-amber-400/40 text-amber-200 hover:bg-amber-400/30`}>
-              <CreditCard className="h-4 w-4 text-amber-300" />PayPal Pay Later / 4-Installments
+              <CreditCard className="h-4 w-4 text-amber-300" />Buy Later (PayPal Pay in 4 / Installments)
             </button>
           </div>
         );
@@ -100,22 +101,22 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
         return <button type="button" disabled className={`${BUTTON} w-full bg-sky-400/15 text-sky-200`}><CircleCheck className="h-4 w-4" />Paid{deal.referenceId ? `, ${deal.referenceId}` : ''}</button>;
       case 'negotiating':
       case 'paying':
-        return <button type="button" disabled className={`${BUTTON} w-full bg-white/10 text-slate-200`}><LoaderCircle className="h-4 w-4 animate-spin" />{deal.status === 'paying' ? 'Confirming payment' : `Agent negotiating, round ${Math.min(deal.rounds.length + 1, MAX_ROUNDS)} of ${MAX_ROUNDS}`}</button>;
+        return <button type="button" disabled className={`${BUTTON} w-full bg-white/10 text-slate-200`}><LoaderCircle className="h-4 w-4 animate-spin text-emerald-400" />{deal.status === 'paying' ? 'Confirming payment...' : `Agent negotiating, round ${Math.min(deal.rounds.length + 1, MAX_ROUNDS)} of ${MAX_ROUNDS}`}</button>;
       default:
         return (
           <div className="space-y-2 w-full">
-            <button type="button" onClick={() => void buyNow(price)} disabled={busy} className={`${BUTTON} w-full bg-amber-300 text-slate-950 hover:bg-amber-200 shadow-md`}>
-              {buying ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}Buy now for {formatZAR(price)}
+            <button type="button" onClick={() => void buyNow(price)} disabled={busy} className={`${BUTTON} w-full bg-amber-300 text-slate-950 hover:bg-amber-200 shadow-md font-bold`}>
+              {buying ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}Buy Now for {formatZAR(price)}
             </button>
             <button type="button" onClick={() => setShowPayPal(true)} disabled={busy} className={`${BUTTON} w-full bg-amber-400/15 border border-amber-400/30 text-amber-200 hover:bg-amber-400/25`}>
-              <CreditCard className="h-4 w-4 text-amber-300" />PayPal Pay Later / Installments
+              <CreditCard className="h-4 w-4 text-amber-300" />Buy Later (PayPal Pay Later / Installments)
             </button>
           </div>
         );
     }
   };
 
-  const canNegotiate = deal.status === 'discovered' || deal.status === 'no_deal' || deal.status === 'over_budget' || deal.status === 'failed';
+  const canNegotiate = deal.status !== 'paying' && deal.status !== 'paid';
 
   return (
     <div className="metapase-fade-in fixed inset-0 z-[80] overflow-y-auto bg-[#050814]/95 backdrop-blur-xl" role="dialog" aria-modal="true" aria-label={deal.ad.itemName}>
@@ -225,10 +226,12 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
           {renderPrimary()}
           <div className="grid grid-cols-3 gap-2">
             <button type="button" onClick={() => onNegotiate(deal.storeId)} disabled={!canNegotiate || busy || !(reading?.inRange ?? false)} className={`${BUTTON} bg-white/[0.07] px-2 text-xs text-slate-100 hover:bg-white/[0.12]`}>
-              <Handshake className="h-4 w-4" />{deal.status === 'discovered' ? 'Negotiate' : 'Try again'}
+              <Handshake className="h-4 w-4 text-emerald-400" />
+              {deal.status === 'agreed' ? 'Re-negotiate' : deal.status === 'discovered' ? 'Negotiate' : 'Try again'}
             </button>
             <button type="button" onClick={() => { onPark(deal, price, bestOffer); onClose(); }} disabled={isParked || deal.status === 'paid' || busy} className={`${BUTTON} bg-white/[0.07] px-2 text-xs text-slate-100 hover:bg-white/[0.12]`}>
-              <SquareParking className="h-4 w-4" />{isParked ? 'Parked' : 'Park'}
+              <SquareParking className="h-4 w-4 text-amber-300" />
+              {isParked ? 'Parked' : 'Park Deal'}
             </button>
             <button
               type="button"
@@ -236,7 +239,8 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
               disabled={isWatched || deal.status === 'paid'}
               className={`${BUTTON} bg-white/[0.07] px-2 text-xs text-slate-100 hover:bg-white/[0.12]`}
             >
-              <Eye className="h-4 w-4" />{isWatched ? 'Watching' : 'Watch later'}
+              <Eye className="h-4 w-4 text-sky-400" />
+              {isWatched ? 'Watching' : 'Watch later'}
             </button>
           </div>
         </div>

@@ -909,6 +909,13 @@ export default function App() {
           onFocusChange={setSelectedId}
           onNegotiate={storeId => void engine.negotiate(storeId)}
           onPay={storeId => void engine.pay(storeId)}
+          onBuyNow={(deal, priceZAR) => void engine.buyAtPrice(snapshotOf(deal), priceZAR)}
+          onBuyLater={(deal) => openDeal(deal.storeId)}
+          onPark={(deal, priceZAR, bestOfferZAR) => {
+            emitEvent({ type: 'parked', deal, lastStorePriceZAR: priceZAR, bestOfferZAR, reason: 'You parked this to decide later.' });
+            addLog('SYSTEM', `Parked ${deal.ad.itemName} at ${formatZAR(priceZAR)}.`, 'success');
+          }}
+          parkedCampaignIds={new Set(commerce.parked.map(p => p.campaignId))}
           emptyState={emptyDeals}
           compact={compact}
           leading={<CornerButton icon={SquareParking} label="Parked" count={commerce.parked.length} tone="amber" corner="parked" bumpKey={bumps.parked} compact={compact || activeView === 'mobile'} onClick={() => setSheet('parked')} />}
