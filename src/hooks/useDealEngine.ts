@@ -38,6 +38,7 @@ export interface DealEngine {
   scan: () => Promise<void>;
   negotiate: (storeId: string, budgetOverrideZAR?: number) => Promise<void>;
   pay: (storeId: string) => Promise<void>;
+  payWithPayPal: (storeId: string, referenceId: string) => Promise<void>;
   buyAtPrice: (item: ItemSnapshot, priceZAR: number) => Promise<BuyResult>;
   reset: () => void;
   refresh: () => void;
@@ -339,6 +340,23 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
     }
   }, [patch]);
 
+  const payWithPayPal = useCallback(async (storeId: string, referenceId: string) => {
+    const deal = dealsRef.current[storeId];
+    if (!deal) return;
+    const price = deal.negotiatedPriceZAR ?? deal.ad.stickerPriceZAR;
+    const outlet = deal.location.outletName;
+    const { onLog } = optionsRef.current;
+    patch(storeId, { status: 'paid', referenceId, transactionToken: null, note: 'Settled via PayPal Commerce Platform' });
+    setStats(prev => ({
+      spentZAR: prev.spentZAR + price,
+      savedZAR: prev.savedZAR + (deal.ad.stickerPriceZAR - price),
+      purchases: prev.purchases + 1
+    }));
+    onLog('META_PAY', `Settled ${formatZAR(price)} at ${outlet} via PayPal Pay Later. Ref: ${referenceId}`, 'success');
+    buzz(300);
+    optionsRef.current.onEvent?.({ type: 'paid', snapshot: snapshotOf(deal), priceZAR: price, referenceId });
+  }, [patch]);
+
   const buyAtPrice = useCallback(async (item: ItemSnapshot, priceZAR: number): Promise<BuyResult> => {
     const { onLog, dataSource } = optionsRef.current;
     const client = getClient(dataSource);
@@ -437,5 +455,5 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
     if (next) void negotiate(next.deal.storeId, next.plan.budgetZAR);
   }, [deals, options.autopilot, options.intent, options.pursue, negotiate]);
 
-  return { deals, isScanning, lastScanAt, stats, serviceOnline, scan, negotiate, pay, buyAtPrice, reset, refresh };
+  return { deals, isScanning, lastScanAt, stats, serviceOnline, scan, negotiate, pay, payWithPayPal, buyAtPrice, reset, refresh };
 }

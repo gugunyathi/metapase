@@ -16,6 +16,7 @@
     "muse:check": "tsx scripts/muse-check.ts"
   },
   "dependencies": {
+    "@paypal/react-paypal-js": "^8.7.0",
     "lucide-react": "^0.468.0",
     "mongodb": "^7.7.0",
     "react": "^19.0.0",

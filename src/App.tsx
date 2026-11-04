@@ -1354,6 +1354,8 @@ export default function App() {
               addLog('SYSTEM', `Parked ${deal.ad.itemName} at ${formatZAR(priceZAR)}.`, 'success');
             }}
             onWatch={(deal, priceZAR) => commerce.watchItem(snapshotOf(deal), priceZAR)}
+            currentDeviceView={activeView}
+            onPayWithPayPal={(storeId, refId) => void engine.payWithPayPal(storeId, refId)}
           />
         );
       })()}

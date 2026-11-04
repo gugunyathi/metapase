@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, CircleCheck, Eye, Handshake, LoaderCircle, Navigation2, SquareParking, Wallet, Sparkles } from 'lucide-react';
+import { ArrowLeft, CircleCheck, Eye, Handshake, LoaderCircle, Navigation2, SquareParking, Wallet, Sparkles, CreditCard } from 'lucide-react';
 import { BuyResult, Deal, NodeReading } from '../types/metapase';
 import { CATEGORY_STYLE, STATUS_META } from './DealCard';
 import { MAX_ROUNDS } from '../config/venue';
 import { cardinal, signedAngleDelta } from '../lib/geo';
 import { formatBearing, formatDistance, formatZAR } from '../lib/format';
+import { PayPalPaymentContainer } from './PayPalPaymentContainer';
 
 interface DealDetailProps {
   deal: Deal;
@@ -14,8 +15,10 @@ interface DealDetailProps {
   matchesIntent: boolean;
   isParked: boolean;
   isWatched: boolean;
+  currentDeviceView?: string;
   onClose: () => void;
   onPay: (storeId: string) => void;
+  onPayWithPayPal?: (storeId: string, referenceId: string) => void;
   onNegotiate: (storeId: string) => void;
   onBuyNow: (deal: Deal, priceZAR: number) => Promise<BuyResult>;
   onPark: (deal: Deal, priceZAR: number, bestOfferZAR: number | null) => void;
@@ -32,9 +35,10 @@ const sideText = (relative: number | null): string => {
   return `${Math.round(angle)}° to your ${relative < 0 ? 'left' : 'right'}`;
 };
 
-export default function DealDetail({ deal, reading, heading, maxBudgetZAR, matchesIntent, isParked, isWatched, onClose, onPay, onNegotiate, onBuyNow, onPark, onWatch }: DealDetailProps) {
+export default function DealDetail({ deal, reading, heading, maxBudgetZAR, matchesIntent, isParked, isWatched, currentDeviceView, onClose, onPay, onPayWithPayPal, onNegotiate, onBuyNow, onPark, onWatch }: DealDetailProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const [buying, setBuying] = useState<boolean>(false);
+  const [showPayPal, setShowPayPal] = useState<boolean>(false);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -83,9 +87,14 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
     switch (deal.status) {
       case 'agreed':
         return (
-          <button type="button" onClick={() => { onPay(deal.storeId); onClose(); }} className={`${BUTTON} w-full bg-amber-300 text-slate-950 hover:bg-amber-200`}>
-            <Wallet className="h-4 w-4" />Pay {formatZAR(price)}
-          </button>
+          <div className="space-y-2 w-full">
+            <button type="button" onClick={() => { onPay(deal.storeId); onClose(); }} className={`${BUTTON} w-full bg-amber-300 text-slate-950 hover:bg-amber-200 shadow-md`}>
+              <Wallet className="h-4 w-4" />Pay {formatZAR(price)} (Biometric Passkey)
+            </button>
+            <button type="button" onClick={() => setShowPayPal(true)} className={`${BUTTON} w-full bg-amber-400/20 border border-amber-400/40 text-amber-200 hover:bg-amber-400/30`}>
+              <CreditCard className="h-4 w-4 text-amber-300" />PayPal Pay Later / 4-Installments
+            </button>
+          </div>
         );
       case 'paid':
         return <button type="button" disabled className={`${BUTTON} w-full bg-sky-400/15 text-sky-200`}><CircleCheck className="h-4 w-4" />Paid{deal.referenceId ? `, ${deal.referenceId}` : ''}</button>;
@@ -94,9 +103,14 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
         return <button type="button" disabled className={`${BUTTON} w-full bg-white/10 text-slate-200`}><LoaderCircle className="h-4 w-4 animate-spin" />{deal.status === 'paying' ? 'Confirming payment' : `Agent negotiating, round ${Math.min(deal.rounds.length + 1, MAX_ROUNDS)} of ${MAX_ROUNDS}`}</button>;
       default:
         return (
-          <button type="button" onClick={() => void buyNow(price)} disabled={busy} className={`${BUTTON} w-full bg-amber-300 text-slate-950 hover:bg-amber-200`}>
-            {buying ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}Buy now for {formatZAR(price)}
-          </button>
+          <div className="space-y-2 w-full">
+            <button type="button" onClick={() => void buyNow(price)} disabled={busy} className={`${BUTTON} w-full bg-amber-300 text-slate-950 hover:bg-amber-200 shadow-md`}>
+              {buying ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}Buy now for {formatZAR(price)}
+            </button>
+            <button type="button" onClick={() => setShowPayPal(true)} disabled={busy} className={`${BUTTON} w-full bg-amber-400/15 border border-amber-400/30 text-amber-200 hover:bg-amber-400/25`}>
+              <CreditCard className="h-4 w-4 text-amber-300" />PayPal Pay Later / Installments
+            </button>
+          </div>
         );
     }
   };
@@ -212,6 +226,26 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
           </div>
         </div>
       </div>
+
+      {showPayPal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 overflow-y-auto">
+          <PayPalPaymentContainer
+            amount={Math.round((price * 0.054) * 100) / 100}
+            currency="USD"
+            currentDeviceView={currentDeviceView ?? 'desktop'}
+            storeName={deal.location.outletName}
+            itemName={deal.ad.itemName}
+            storeId={deal.storeId}
+            sku={deal.ad.sku}
+            onPaymentSuccess={refId => {
+              setShowPayPal(false);
+              if (onPayWithPayPal) onPayWithPayPal(deal.storeId, refId);
+              onClose();
+            }}
+            onCancel={() => setShowPayPal(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { REAL_PRODUCTS } from '../src/config/products.js';
 import { STORE_NODES } from '../src/config/venue.js';
 import { db, initDatabase, isDbConnected, DbUserSession, DbTransactionReceipt } from './db.js';
 import { handleMuseRequest, museMerchantCounter, museStatus } from './muse.js';
+import { handleCreatePayPalOrder, handleCapturePayPalOrder } from './routes/paypal.js';
 
 // Load .env before anything reads process.env (Node 22+). A missing file is fine: real environment variables still work.
 try {
@@ -483,6 +484,12 @@ const ROUTES: Record<string, RouteHandler> = {
   },
 
   'POST /api/agent/settle': async req => ROUTES['POST /api/pay/settle'](req),
+
+  // PAYPAL COMMERCE PLATFORM & PAY LATER RAILS
+  'POST /api/pay/paypal/create-order': handleCreatePayPalOrder,
+  'POST /api/pay/paypal/capture-order': handleCapturePayPalOrder,
+  'POST /api/paypal/create-order': handleCreatePayPalOrder,
+  'POST /api/paypal/checkout-settle': handleCapturePayPalOrder,
 
   'GET /api/health': async () => {
     const agents = getAllMerchantAgents();
