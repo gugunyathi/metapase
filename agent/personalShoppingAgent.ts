@@ -1,8 +1,7 @@
-import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 
 /**
- * Meta Muse & Personal Agent Protocol - Personal Shopping Agent
- * Standard co-developed by Meta, Shopify, Stripe, Sierra, and Walmart.
+ * MetaPase Personal Shopping Agent
  * 
  * Capabilities:
  * 1. Digital ID Badge protocol (human-delegated proxy verification to bypass anti-bot blockades)
@@ -73,7 +72,7 @@ export class PersonalShoppingAgent {
     this.apiBase = options.apiBase ?? process.env.VITE_METAPASE_API_BASE ?? 'http://localhost:3000';
     this.agentName = options.agentName ?? 'Metapase-Muse-Shopping-Agent';
     this.shopperId = options.shopperId ?? 'user_shopper_za_001';
-    this.shopperSecret = options.shopperSecret ?? 'shopper_dev_secret_key_8829';
+    this.shopperSecret = options.shopperSecret ?? process.env.METAPASE_SHOPPER_SECRET ?? randomBytes(32).toString('hex');
     this.stripeSecretKey = options.stripeSecretKey ?? process.env.STRIPE_SECRET_KEY;
   }
 
@@ -422,7 +421,7 @@ if (isDirectExecution) {
     intent: 'blazer jacket clothing',
     maxBudgetZAR: 1100,
     matchRadiusM: 50
-  }).then(res => {
+  }).then(() => {
     console.log('\n[PersonalAgent] Run finished successfully!');
   }).catch(err => {
     console.error('[PersonalAgent] Error:', err);

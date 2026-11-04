@@ -3,6 +3,7 @@ import { demoClient } from './demoBackend';
 import { timeoutSignal } from './device';
 import { authorizePayment, forgetPasskey } from './metaPay';
 import type { JsonResult } from './metaPay';
+import { demoActivity, demoAnalytics, demoCreateAgent, demoGetAgent, demoInventory, demoMerchants, demoRecordSale, demoRedeem, demoTransactions, demoUpdateStock } from './demoStore';
 
 export const API_BASE: string = (import.meta.env.VITE_METAPASE_API_BASE as string | undefined) ?? 'http://localhost:3000';
 
@@ -247,7 +248,7 @@ const getJson = async <T>(path: string): Promise<T | null> => {
   }
 };
 
-export const api = {
+const liveApi = {
   // Health & Info
   getHealth: () => getJson<{ ok: boolean; database: string; merchantsCount: number }>('/api/health'),
   getInfo: () => getJson<Record<string, unknown>>('/api/info'),
@@ -319,4 +320,137 @@ export const api = {
     getJson<ApiCreditSummary>(`/api/user/credit-plans?userId=${encodeURIComponent(userId)}`),
   payInstallment: (planId: string) =>
     postJson<{ ok: boolean; message: string; plan: ApiInstallmentPlan }>(`/api/user/credit-plans/${planId}/pay`, {})
+};
+
+// ==========================================
+// DEMO FALLBACK
+// ==========================================
+// With the Node server and MongoDB running, the app uses them. If they are not reachable (a hosted preview, a
+// judge's phone, an offline laptop) the same calls are answered by the in-browser store, so every screen still works.
+
+export type ApiSource = 'live' | 'demo';
+let lastSource: ApiSource = 'live';
+
+/** Where the most recent merchant-data call was answered: the real backend, or the in-browser demo store. */
+export const getApiSource = (): ApiSource => lastSource;
+
+const answered = <T>(source: ApiSource, value: T): T => {
+  lastSource = source;
+  return value;
+};
+
+const viaLive = async <T>(live: () => Promise<T | null>, demo: () => T): Promise<T> => {
+  const result = await live().catch(() => null);
+  return result !== null && result !== undefined ? answered('live', result) : answered('demo', demo());
+};
+
+const viaLivePost = async <T>(live: () => Promise<JsonResult<T>>, demo: () => JsonResult<T>): Promise<JsonResult<T>> => {
+  try {
+    return answered('live', await live());
+  } catch {
+    return answered('demo', demo());
+  }
+};
+
+const okResult = <T>(data: T): JsonResult<T> => ({ ok: true, status: 200, data });
+
+const demoUserId = (userId?: string): string => userId ?? 'user_shopper_01';
+
+export const api = {
+  ...liveApi,
+
+  getMerchants: () =>
+    viaLive(liveApi.getMerchants, () => {
+      const merchants = demoMerchants();
+      return { ok: true, count: merchants.length, merchants };
+    }),
+  getStoreInventory: (storeId?: string) =>
+    viaLive(
+      () => liveApi.getStoreInventory(storeId),
+      () => {
+        const inventory = demoInventory(storeId);
+        return { ok: true, count: inventory.length, inventory, storeId };
+      }
+    ),
+  getMerchantAnalytics: (storeId: string) => viaLive(() => liveApi.getMerchantAnalytics(storeId), () => ({ ok: true, analytics: demoAnalytics(storeId) })),
+  getMerchantTransactions: (storeId: string) =>
+    viaLive(
+      () => liveApi.getMerchantTransactions(storeId),
+      () => {
+        const transactions = demoTransactions({ storeId });
+        return { storeId, count: transactions.length, transactions };
+      }
+    ),
+  getTransactions: (filters?: { userId?: string; storeId?: string }) =>
+    viaLive(
+      () => liveApi.getTransactions(filters),
+      () => {
+        const transactions = demoTransactions(filters);
+        return { count: transactions.length, transactions };
+      }
+    ),
+  getActivityLog: (filters?: { storeId?: string; userId?: string; type?: string; limit?: number }) =>
+    viaLive(
+      () => liveApi.getActivityLog(filters),
+      () => {
+        const activities = demoActivity(filters);
+        return { count: activities.length, activities };
+      }
+    ),
+  getCreditPlans: (userId?: string) =>
+    viaLive(
+      () => liveApi.getCreditPlans(userId),
+      () => ({ ok: true, userId: demoUserId(userId), creditLimitZAR: 5000, totalFinancedZAR: 0, remainingDebtZAR: 0, availableCreditZAR: 5000, activePlansCount: 0, plans: [] })
+    ),
+
+  updateProductStock: (storeId: string, sku: string, stockQuantity: number) =>
+    viaLivePost(
+      () => liveApi.updateProductStock(storeId, sku, stockQuantity),
+      () => {
+        const item = demoUpdateStock(storeId, sku, stockQuantity);
+        return item ? okResult({ success: true, item }) : { ok: false, status: 404, data: null };
+      }
+    ),
+  redeemVoucher: (voucherCode: string) =>
+    viaLivePost(
+      () => liveApi.redeemVoucher(voucherCode),
+      () => {
+        const result = demoRedeem(voucherCode);
+        return result ? { ok: result.success, status: result.success ? 200 : 409, data: result } : { ok: false, status: 404, data: null };
+      }
+    ),
+
+  /** Buys at the store's promotion price. Throws when the item is sold out (demo store) so the caller can say so. */
+  manualBuy: (payload: { storeId: string; sku: string; priceZAR?: number; paymentMethod?: string; userId?: string }) =>
+    viaLivePost(
+      () => liveApi.manualBuy(payload),
+      () => okResult({ success: true, mode: 'manual', receipt: demoRecordSale({ storeId: payload.storeId, sku: payload.sku, priceZAR: payload.priceZAR ?? 0, purchasedBy: 'manual_user_checkout', userId: payload.userId }) })
+    ),
+  autonomousBuy: (payload: { storeId: string; sku: string; maxBudgetZAR: number; userId?: string; virtualCard?: { cardId?: string; last4?: string } }) =>
+    viaLivePost(
+      () => liveApi.autonomousBuy(payload),
+      () => {
+        const floor = demoInventory(payload.storeId).find(item => item.sku === payload.sku)?.floorPriceZAR ?? 0;
+        if (payload.maxBudgetZAR < floor) throw new Error(`The store won’t go below R${floor}, which is above your R${payload.maxBudgetZAR} budget.`);
+        const receipt = demoRecordSale({ storeId: payload.storeId, sku: payload.sku, priceZAR: floor, purchasedBy: 'autonomous_personal_agent', userId: payload.userId });
+        return okResult({ success: true, mode: 'autonomous', receipt, agreedPriceZAR: receipt.amountZAR, roundsCompleted: 3 });
+      }
+    ),
+
+  getUserAgent: (userId?: string) =>
+    viaLive(
+      () => liveApi.getUserAgent(userId),
+      () => demoGetAgent(demoUserId(userId)) ?? { userId: demoUserId(userId), agentId: `agent_${demoUserId(userId)}`, agentName: 'Personal Muse Agent', creditBalanceZAR: 1000, promoApplied: true, activeWishlistCount: 0 }
+    ),
+
+  /** One-click agent creation. The server stores the agent in MongoDB; with no server the browser keeps it. */
+  createUserAgent: async (input: { userId: string; agentName: string; userName?: string }): Promise<{ agent: ApiUserAgent; source: ApiSource }> => {
+    try {
+      const response = await postJson<ApiUserAgent>('/api/user/agent/create', input);
+      if (response.ok && response.data) return { agent: response.data, source: answered('live', 'live') };
+    } catch {
+      /* no server: fall through to the in-browser store */
+    }
+    return { agent: demoCreateAgent({ userId: input.userId, agentName: input.agentName }), source: answered('demo', 'demo') };
+  }
 };

@@ -79,7 +79,7 @@ export default function DealCard({ deal, reading, heading, selected, matchesInte
 
   if (variant === 'compact') {
     return (
-      <article className={`flex items-center gap-3 rounded-2xl border p-3 transition ${selected ? 'border-emerald-400/50 bg-emerald-400/[0.06]' : 'border-white/[0.06] bg-white/[0.03]'} ${matchesIntent ? '' : 'opacity-60'}`}>
+      <article className={`flex items-center gap-3 rounded-2xl border p-3 transition ${selected ? 'border-emerald-400/50 bg-[#0b1c1b]' : 'border-white/[0.06] bg-[#0c1220]'} ${matchesIntent ? '' : 'brightness-75 saturate-50'}`}>
         <button type="button" onClick={() => onSelect(deal.storeId)} aria-pressed={selected} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-2 focus-visible:outline-emerald-300">
           {deal.ad.imageUrl ? (
             <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-800">
@@ -107,7 +107,7 @@ export default function DealCard({ deal, reading, heading, selected, matchesInte
   }
 
   return (
-    <article className={`flex flex-col overflow-hidden rounded-3xl border bg-slate-900/60 backdrop-blur transition ${selected ? 'border-emerald-400/50 shadow-[0_0_0_1px_rgba(52,211,153,0.2),0_24px_60px_-24px_rgba(16,185,129,0.45)]' : 'border-white/[0.06] hover:border-white/15'} ${matchesIntent ? '' : 'opacity-70'}`}>
+    <article className={`flex flex-col overflow-hidden rounded-3xl border bg-slate-900 transition ${selected ? 'border-emerald-400/50 shadow-[0_0_0_1px_rgba(52,211,153,0.2),0_24px_60px_-24px_rgba(16,185,129,0.45)]' : 'border-white/[0.06] hover:border-white/15'} ${matchesIntent ? '' : 'brightness-75 saturate-50'}`}>
       <button type="button" onClick={() => onSelect(deal.storeId)} aria-pressed={selected} className="group relative h-44 overflow-hidden bg-slate-950 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-300">
         {deal.ad.imageUrl ? (
           <>

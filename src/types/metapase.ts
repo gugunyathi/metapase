@@ -28,7 +28,7 @@ export type DeviceProfile = 'glasses' | 'watch' | 'car' | 'muse' | 'mobile' | 'd
 export interface LogEntry {
   id: string;
   timestamp: string;
-  source: 'SYSTEM' | 'BLE_RADIO' | 'LLAMA_AGENT' | 'META_PAY';
+  source: 'SYSTEM' | 'BLE_RADIO' | 'LLAMA_AGENT' | 'META_PAY' | 'MUSE';
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
 }
@@ -114,6 +114,9 @@ export interface BargainResponse {
   status: 'OFFER_ACCEPTED' | 'COUNTER_OFFER_PROPOSED' | string;
   finalPriceZAR: number;
   transactionToken?: string;
+  /** What the store's agent said with its counter-offer, when Muse wrote it. */
+  message?: string;
+  engine?: 'muse' | 'rules';
 }
 
 export interface AuthPayload {
@@ -142,6 +145,9 @@ export interface NegotiationRound {
   agentOfferZAR: number;
   storeResponse: 'accepted' | 'countered' | 'ended';
   storePriceZAR: number | null;
+  /** What the store's agent said with its counter-offer, when Muse wrote it. */
+  storeMessage?: string;
+  engine?: 'muse' | 'rules';
 }
 
 export interface Deal {
@@ -269,6 +275,11 @@ export interface UserPasskeyAuth {
 export interface WishlistItem {
   id: string;
   query: string;
+  /** Extra words that also count as a match (e.g. "jacket" for a "blazer" wish). Filled in by Muse when the wish is written in plain language. */
+  keywords?: string[];
+  category?: DealCategory;
+  /** The shopper's own words, kept so the wish can show what they actually asked for. */
+  originalText?: string;
   targetMaxPriceZAR: number;
   autoBuy: boolean; // if true, auto-buys using promo credit, else parks
   addedAt: number;

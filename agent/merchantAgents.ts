@@ -1,11 +1,10 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { REAL_PRODUCTS, CatalogProduct } from '../src/config/products.js';
 import { MALLS_DATABASE } from '../src/config/malls.js';
 
 /**
- * Meta Muse & Personal Agent Protocol - Merchant Business Agent
- * Represents a store in the Meta Muse / Personal Agent Protocol ecosystem.
- * Co-developed by Meta, Shopify, Stripe, Sierra, and Walmart.
+ * MetaPase Merchant Agent
+ * Represents a store in the MetaPase agent network.
  * 
  * Supports:
  * 1. Autonomous Agent-to-Agent bargaining (via Personal Agent Protocol)
@@ -53,6 +52,16 @@ export interface PurchaseReceipt {
   timestamp: string;
   authorizationRef: string;
   qrPayload: string;
+  userId?: string;
+  status?: 'ISSUED' | 'REDEEMED' | 'EXPIRED';
+  financing?: {
+    isFinanced: boolean;
+    planId: string;
+    walletUsedZAR: number;
+    financedAmountZAR: number;
+    monthlyInstallmentZAR: number;
+    termMonths: 12;
+  };
 }
 
 export class MetaMerchantAgent {

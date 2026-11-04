@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import {
   Building2, Package, History, Activity, TrendingUp,
   X, CheckCircle2, RefreshCw, Plus, Minus, QrCode,
-  Zap, Bot
+  Zap, Bot, Sparkles
 } from 'lucide-react';
-import { api, ApiProductInventory, ApiMerchantAnalytics, ApiActivityLog, ApiTransactionReceipt } from '../lib/api';
+import { api, getApiSource, ApiProductInventory, ApiMerchantAnalytics, ApiActivityLog, ApiTransactionReceipt } from '../lib/api';
+import { getMuseInsights } from '../lib/muse';
+import type { MuseInsights } from '../lib/muse';
 import { formatZAR } from '../lib/format';
 
 interface MerchantHubModalProps {
@@ -30,6 +32,8 @@ export default function MerchantHubModal({
   const [updatingSku, setUpdatingSku] = useState<string | null>(null);
   const [redeemingCode, setRedeemingCode] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [museInsights, setMuseInsights] = useState<MuseInsights | null>(null);
+  const [askingMuse, setAskingMuse] = useState<boolean>(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -157,7 +161,7 @@ export default function MerchantHubModal({
                 <h3 className="text-base font-black text-white">Merchant & Database Control Console</h3>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  MongoDB / In-Memory Active
+                  {getApiSource() === 'live' ? 'Live backend connected' : 'Demo store, saved in this browser'}
                 </span>
               </div>
               <p className="text-xs text-slate-400">Manage stores, products, inventory, transactions, and live audit feed</p>
@@ -290,6 +294,43 @@ export default function MerchantHubModal({
         {/* Tab 1: Store Inventory & Stock Management */}
         {activeTab === 'inventory' && (
           <div className="flex-1 overflow-y-auto p-6 space-y-3">
+            <section className="rounded-2xl border border-sky-300/20 bg-sky-400/[0.06] p-4" aria-label="Muse suggestions">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="flex items-center gap-1.5 text-sm font-bold text-sky-100"><Sparkles className="h-4 w-4" aria-hidden="true" />Muse suggests</h4>
+                  <p className="text-xs text-slate-400">Specific ideas for {selectedStore.storeName}, based on its stock and sales.</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={askingMuse || inventory.length === 0}
+                  onClick={async () => {
+                    setAskingMuse(true);
+                    setMuseInsights(await getMuseInsights({
+                      storeName: selectedStore.storeName,
+                      totalSales: analytics?.totalSalesCount ?? 0,
+                      grossRevenueZAR: analytics?.grossRevenueZAR ?? 0,
+                      inventory: inventory.map(item => ({ name: item.name, stock: item.stockQuantity, basePriceZAR: item.basePriceZAR, floorPriceZAR: item.floorPriceZAR }))
+                    }));
+                    setAskingMuse(false);
+                  }}
+                  className="shrink-0 rounded-xl bg-sky-300 px-3.5 py-2 text-xs font-bold text-slate-950 transition hover:bg-sky-200 disabled:opacity-50"
+                >
+                  {askingMuse ? 'Thinking…' : museInsights ? 'Ask again' : 'Ask Muse'}
+                </button>
+              </div>
+              {museInsights && (
+                <ul className="mt-3 space-y-2">
+                  {museInsights.insights.map(insight => (
+                    <li key={insight.title} className="rounded-xl bg-black/30 p-3">
+                      <p className="text-sm font-semibold text-white">{insight.title}</p>
+                      <p className="text-xs text-sky-100">{insight.action}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">{insight.rationale}</p>
+                    </li>
+                  ))}
+                  <li className="text-[11px] text-slate-500">{museInsights.engine === 'muse' ? 'Written by Muse Spark.' : 'Written by built-in stock rules. Muse Spark is not connected here.'}</li>
+                </ul>
+              )}
+            </section>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-300">
                 Live Inventory for <strong className="text-white">{selectedStore.storeName}</strong>

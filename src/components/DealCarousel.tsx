@@ -16,6 +16,8 @@ export interface CarouselEntry {
 export interface PinRequest {
   id: string;
   at: number;
+  /** How long to hold on this card. Event-driven pins use a short hold so a card never lingers. */
+  holdMs?: number;
 }
 
 interface DealCarouselProps {
@@ -43,11 +45,12 @@ interface CarouselItem extends CarouselEntry {
   distanceM: number;
 }
 
-type CarouselMode = 'single' | 'dragging' | 'pinned' | 'paused' | 'following' | 'facing' | 'cycling';
+type CarouselMode = 'single' | 'dragging' | 'pinned' | 'following' | 'facing' | 'cycling';
 
 const TURN_FOLLOW_MS = 2500;
-const FACING_HOLD_MS = 10000;
-const PIN_MS = 9000;
+const FACING_HOLD_MS = 5000;
+const PIN_MS = 5000;
+const HOVER_SLOWDOWN = 0.3;
 const FACING_DEG = 12;
 const GAP_PX = 18;
 const VISIBLE_RADIUS = 3.4;
@@ -56,8 +59,9 @@ const SPRING_C = 2 * Math.sqrt(SPRING_K);
 const DRAG_THRESHOLD_PX = 6;
 
 export const cruiseFor = (speedMps: number, count: number): number => {
+  const speed = Number.isFinite(speedMps) ? Math.max(0, speedMps) : 0;
   const countFactor = Math.min(2, Math.max(0.75, count / 4));
-  return Math.min(1.2, Math.max(0.12, (0.16 + 0.22 * Math.max(0, speedMps)) * countFactor));
+  return Math.min(1.2, Math.max(0.12, (0.16 + 0.22 * speed) * countFactor));
 };
 
 const wrap = (value: number, size: number): number => ((value % size) + size) % size;
@@ -124,10 +128,12 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
   const modeRef = useRef<CarouselMode>('single');
   const orderRef = useRef<string[]>([]);
   const reducedMotionRef = useRef<boolean>(false);
+  const agentPinRef = useRef<boolean>(false);
 
   const items: CarouselItem[] = useMemo(
     () =>
       entries
+        .filter((entry, index, all) => all.findIndex(other => other.deal.storeId === entry.deal.storeId) === index)
         .filter(entry => entry.reading?.inRange)
         .map(entry => {
           const bearing = entry.reading?.bearingDeg ?? null;
@@ -185,8 +191,9 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
     if (!pinRequest) return;
     const index = stateRef.current.items.findIndex(item => item.id === pinRequest.id);
     if (index < 0) return;
+    agentPinRef.current = pinRequest.holdMs !== undefined;
     pinnedTargetRef.current = index;
-    pinnedUntilRef.current = pinRequest.at + PIN_MS;
+    pinnedUntilRef.current = pinRequest.at + (pinRequest.holdMs ?? PIN_MS);
   }, [pinRequest]);
 
   useEffect(() => {
@@ -238,9 +245,6 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
         nextMode = 'pinned';
         if (pinnedTargetRef.current !== null) target = pinnedTargetRef.current;
         else if (Math.abs(velocity) < 0.45) target = Math.round(position);
-      } else if (hoverRef.current) {
-        nextMode = 'paused';
-        target = Math.round(position);
       } else if (now - turnAt < TURN_FOLLOW_MS) {
         nextMode = 'following';
         target = headingIndexFor(list, currentHeading);
@@ -268,7 +272,7 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
           velocity += acceleration * dt;
           position += velocity * dt;
         } else if (nextMode === 'cycling') {
-          const cruise = cruiseFor(speed, count);
+          const cruise = cruiseFor(speed, count) * (hoverRef.current ? HOVER_SLOWDOWN : 1);
           velocity += (cruise - velocity) * (1 - Math.exp(-dt * 1.6));
           position += velocity * dt;
         } else {
@@ -277,6 +281,8 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
         }
       }
 
+      if (!Number.isFinite(position)) position = 0;
+      if (!Number.isFinite(velocity)) velocity = 0;
       if (count > 0) position = wrap(position, count);
       positionRef.current = position;
       velocityRef.current = velocity;
@@ -324,6 +330,7 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
   }, []);
 
   const pinTo = (index: number) => {
+    agentPinRef.current = false;
     pinnedTargetRef.current = index;
     pinnedUntilRef.current = Date.now() + PIN_MS;
   };
@@ -385,8 +392,7 @@ export default function DealCarousel({ entries, heading, speedMps, lastTurnAt, p
   const modeText: Record<CarouselMode, string> = {
     single: items.length === 1 ? 'One deal in range' : 'No deals in range',
     dragging: 'Browsing',
-    pinned: 'Paused on your pick',
-    paused: 'Paused while you look',
+    pinned: agentPinRef.current ? 'Agent is settling this deal' : 'Paused on your pick',
     following: 'Following where you face',
     facing: 'Holding the deal you’re facing',
     cycling: speedMps >= 0.2 ? 'Gliding faster while you move' : 'Gliding through nearby deals'

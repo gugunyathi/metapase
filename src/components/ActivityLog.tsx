@@ -5,7 +5,8 @@ const SOURCE_LABEL: Record<LogEntry['source'], string> = {
   SYSTEM: 'System',
   BLE_RADIO: 'Radio',
   LLAMA_AGENT: 'Agent',
-  META_PAY: 'Meta Pay'
+  META_PAY: 'Meta Pay',
+  MUSE: 'Muse Spark'
 };
 
 const TYPE_COLOR: Record<LogEntry['type'], string> = {
@@ -39,7 +40,7 @@ export default function ActivityLog({ logs, heightClass = 'h-64' }: ActivityLogP
         {logs.map(entry => (
           <div key={entry.id} className="grid grid-cols-[auto_auto_1fr] items-baseline gap-2">
             <span className="tabular-nums text-xs text-slate-600">{entry.timestamp}</span>
-            <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[11px] text-slate-400">{SOURCE_LABEL[entry.source]}</span>
+            <span className={`rounded-md px-1.5 py-0.5 text-[11px] ${entry.source === 'MUSE' ? 'bg-sky-400/15 font-semibold text-sky-200' : 'bg-white/5 text-slate-400'}`}>{SOURCE_LABEL[entry.source]}</span>
             <span className={TYPE_COLOR[entry.type]}>{entry.message}</span>
           </div>
         ))}

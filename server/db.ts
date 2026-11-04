@@ -1,4 +1,4 @@
-import { MongoClient, Db, Collection } from 'mongodb';
+import { MongoClient, Db } from 'mongodb';
 import { MALLS_DATABASE } from '../src/config/malls.js';
 import { REAL_PRODUCTS } from '../src/config/products.js';
 
@@ -183,8 +183,8 @@ class InMemoryDb {
     // Seed default human user and agent with R1,000 credit
     const defaultUser: DbUser = {
       userId: 'user_shopper_01',
-      userName: 'Gugu Nyathi',
-      email: 'gugu@metapase.app',
+      userName: 'Demo Shopper',
+      email: 'demo@metapase.app',
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
@@ -193,7 +193,7 @@ class InMemoryDb {
     const defaultAgent: DbPersonalAgent = {
       agentId: 'agent_personal_shopper_01',
       userId: defaultUser.userId,
-      agentName: "Gugu's Personal Muse Agent",
+      agentName: "Demo Muse Agent",
       creditBalanceZAR: 1000,
       promoCode: 'WELCOME-R1000-ACTIVE',
       delegationScope: ['browse', 'bargain', 'transact'],
@@ -275,7 +275,7 @@ class InMemoryDb {
         storeId: 'fw_nike',
         storeName: 'Nike Fourways',
         mallId: 'fourways_mall',
-        summary: 'Gugu Nyathi purchased Nike Air Zoom Pegasus 41 for R1,999 (Saved R400)',
+        summary: 'Demo Shopper purchased Nike Air Zoom Pegasus 41 for R1,999 (Saved R400)',
         details: { voucherCode: tx2.voucherCode, sku: 'NK-PEG-0041', amountZAR: 1999 }
       },
       {

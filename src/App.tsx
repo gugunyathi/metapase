@@ -2,10 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Bot, Building2, Car, Compass as CompassIcon, Glasses, Laptop, Navigation2, RotateCcw, RotateCw, Satellite, ShoppingBag, Smartphone, SquareParking, Volume2, Watch, Wallet, Fingerprint, Gift, Mic } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { CartLine, DataSource, Deal, DealCategory, DealStatus, EngineEvent, DeviceProfile, GeoPoint, IntentFilter, LogEntry, NodeReading, PageId, PlacedStore, VenueMode, UserPasskeyAuth, WishlistItem } from './types/metapase';
+import { CartLine, DataSource, Deal, DealCategory, DealStatus, EngineEvent, DeviceProfile, GeoPoint, IntentFilter, ItemSnapshot, LogEntry, NodeReading, PageId, PlacedStore, VenueMode, UserPasskeyAuth, WishlistItem } from './types/metapase';
 import { MATCH_RADIUS_M } from './config/venue';
 import { DEFAULT_MALL_ID, MALLS_DATABASE, PROXIMITY_ZONES, ProximityRadiusMode } from './config/malls';
-import { REAL_PRODUCTS } from './config/products';
 import { cardinal, haversineM, normalizeDeg, offsetToGeo, signedAngleDelta } from './lib/geo';
 import { formatBearing, formatDistance, formatZAR } from './lib/format';
 import { estimatePosition, resolveMode } from './lib/positioning';
@@ -23,7 +22,8 @@ import DealDetail from './components/DealDetail';
 import FlightLayer from './components/FlightLayer';
 import type { Flight } from './components/FlightLayer';
 import { snapshotOf } from './lib/commerce';
-import { rotateDemoCatalog } from './lib/demoBackend';
+import { wishBudget, wishMatchesDeal } from './lib/wishlist';
+import { rotateDemoCatalog, setDemoShopper } from './lib/demoBackend';
 import { buzz, setHapticsEnabled, speakText, stopSpeech } from './lib/device';
 import { useCommerce } from './hooks/useCommerce';
 import FloatingNav, { NAV_ITEMS } from './components/FloatingNav';
@@ -39,6 +39,8 @@ import DealCard from './components/DealCard';
 import ActivityLog from './components/ActivityLog';
 import PlaceholderDealCard from './components/PlaceholderDealCard';
 import PasskeyAuthModal from './components/PasskeyAuthModal';
+import MuseBadge from './components/MuseBadge';
+import AgentOnboarding from './components/AgentOnboarding';
 import WishlistModal from './components/WishlistModal';
 
 const VIEWS: { id: DeviceProfile; label: string; icon: LucideIcon }[] = [
@@ -64,6 +66,11 @@ const STATUS_ORDER: Record<DealStatus, number> = {
 const FACING_TOLERANCE_DEG = 12;
 const DEMO_RUN_INTERVAL_MS = 40000;
 const DEMO_PURCHASE_LIMIT = 40;
+const DEMO_NEXT_RUN_DELAY_MS = 3500;
+/** A parked or bought card dives into its corner, then leaves the carousel. If that animation never runs, it still leaves after this long. */
+const DEPART_FALLBACK_MS = 3800;
+/** How long the carousel eases a resolving card to the middle before it dives into Parked or Bag. */
+const RESOLVE_HOLD_MS = 1500;
 
 const toneFor = (status: DealStatus | undefined): CompassTone => {
   if (!status) return 'store';
@@ -97,7 +104,8 @@ const readHashPage = (): PageId => {
 interface Celebration {
   id: number;
   storeId: string;
-  kind: 'surface' | 'parked' | 'bag' | 'cart';
+  campaignId: string;
+  kind: 'parked' | 'bag';
   itemName: string;
   category: DealCategory;
   priceZAR: number;
@@ -158,6 +166,11 @@ export default function App() {
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [flight, setFlight] = useState<Flight | null>(null);
+  // Campaigns whose card has left the carousel (parked or bought). Keyed by campaign so a new offer at the same store shows up again.
+  const [departed, setDeparted] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const depart = useCallback((campaignId: string) => {
+    setDeparted(prev => (prev.has(campaignId) ? prev : new Set(prev).add(campaignId)));
+  }, []);
   const [bumps, setBumps] = useState<{ parked: number; bag: number; cart: number }>({ parked: 0, bag: 0, cart: 0 });
   const celebrationIdRef = useRef<number>(0);
   const activeCelebrationRef = useRef<number | null>(null);
@@ -177,7 +190,7 @@ export default function App() {
     Object.fromEntries(MALLS_DATABASE.flatMap(m => m.stores).map(node => [node.id, node.defaultRssi]))
   );
   const [intent, setIntent] = useState<IntentFilter>('any');
-  const [maxBudgetZAR, setMaxBudgetZAR] = useState<number>(600);
+  const [maxBudgetZAR, setMaxBudgetZAR] = useState<number>(1500);
   const [autopilot, setAutopilot] = useState<boolean>(true);
   const [dataSource, setDataSource] = useState<DataSource>(DEFAULT_DATA_SOURCE);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -186,25 +199,22 @@ export default function App() {
   const [lastTurnAt, setLastTurnAt] = useState<number>(0);
 
   // Human User Passkey Authentication & Personal Shopping Agent with R1,000 Promo Credit
+  // A new shopper has no agent yet. One click on the welcome screen creates it. Older builds saved a hard-coded default agent, which is dropped.
   const [auth, setAuth] = useState<UserPasskeyAuth | null>(() => {
     try {
       const stored = localStorage.getItem('metapase:auth');
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return {
-      signedIn: true,
-      userId: 'user_shopper_01',
-      userName: 'Gugu Nyathi',
-      email: 'gugu@metapase.app',
-      credentialId: 'pk_cred_webauthn_za01',
-      authMethod: 'webauthn_passkey',
-      signedInAt: Date.now(),
-      agentId: 'agent_personal_shopper_01',
-      agentName: "Gugu's Personal Muse Agent",
-      agentCreditBalanceZAR: 1000,
-      promoCode: 'WELCOME-R1000-ACTIVE'
-    };
+      if (stored) {
+        const parsed = JSON.parse(stored) as UserPasskeyAuth;
+        if (parsed.signedIn && parsed.credentialId !== 'pk_cred_webauthn_za01') return parsed;
+      }
+    } catch {
+      /* unreadable saved agent: start fresh */
+    }
+    return null;
   });
+
+  // The agent only goes shopping once it exists, and only while autopilot is on.
+  const agentActive = autopilot && auth !== null;
 
   // User Shopping Wishlist (Voice & Text)
   const [wishlist, setWishlist] = useState<WishlistItem[]>(() => {
@@ -247,6 +257,7 @@ export default function App() {
         localStorage.setItem('metapase:auth', JSON.stringify(auth));
       } catch {}
     }
+    setDemoShopper(auth?.userId);
   }, [auth]);
 
   // Always track user location for drive-by commuters and mall detection
@@ -367,32 +378,62 @@ export default function App() {
   }, []);
 
   const celebrate = useCallback((event: EngineEvent) => {
+    // Only a resolved deal (parked or bought) animates. Discovered and agreed deals are acted on by the agent, not by the shopper.
+    if (event.type === 'discovered' || event.type === 'agreed') return;
     const context = celebrationContextRef.current;
     const onCarousel = context.page === 'home' && context.view !== 'glasses';
-    let next: Omit<Celebration, 'id'> | null = null;
-    if (event.type === 'discovered') {
-      if (!matchesIntent(event.deal.category, context.intent)) return;
-      next = { storeId: event.deal.storeId, kind: 'surface', itemName: event.deal.ad.itemName, category: event.deal.category, priceZAR: event.deal.ad.stickerPriceZAR };
-    } else if (event.type === 'agreed') {
-      if (context.autoBuy) return;
-      next = { storeId: event.deal.storeId, kind: 'surface', itemName: event.deal.ad.itemName, category: event.deal.category, priceZAR: event.priceZAR };
-    } else if (event.type === 'parked') {
-      next = { storeId: event.deal.storeId, kind: 'parked', itemName: event.deal.ad.itemName, category: event.deal.category, priceZAR: event.lastStorePriceZAR };
-    } else {
-      next = { storeId: event.snapshot.storeId, kind: 'bag', itemName: event.snapshot.itemName, category: event.snapshot.category, priceZAR: event.priceZAR };
-    }
+    const next: Omit<Celebration, 'id'> = event.type === 'parked'
+      ? { storeId: event.deal.storeId, campaignId: event.deal.ad.campaignId, kind: 'parked', itemName: event.deal.ad.itemName, category: event.deal.category, priceZAR: event.lastStorePriceZAR }
+      : { storeId: event.snapshot.storeId, campaignId: event.snapshot.campaignId, kind: 'bag', itemName: event.snapshot.itemName, category: event.snapshot.category, priceZAR: event.priceZAR };
+    // Whatever the animation does, the card leaves the carousel.
+    window.setTimeout(() => depart(next.campaignId), DEPART_FALLBACK_MS);
     if (!onCarousel) {
-      if (next.kind !== 'surface') bumpCorner(next.kind);
+      depart(next.campaignId);
+      bumpCorner(next.kind);
       return;
     }
     const celebration: Celebration = { ...next, id: ++celebrationIdRef.current };
-    setCelebrations(prev => (celebration.kind === 'surface' && prev.length >= 3 ? prev : [...prev, celebration].slice(-8)));
-  }, [bumpCorner]);
+    setCelebrations(prev => [...prev, celebration].slice(-8));
+  }, [bumpCorner, depart]);
+
+  // The shopper's wishes, read at the moment a payment lands so a purchase is never matched against stale state.
+  const wishlistRef = useRef<WishlistItem[]>(wishlist);
+  const authRef = useRef<UserPasskeyAuth | null>(auth);
+  useEffect(() => {
+    wishlistRef.current = wishlist;
+    authRef.current = auth;
+  });
+
+  /** A wish is only marked bought once Meta Pay confirms the payment. */
+  const resolveWishOnPurchase = useCallback((snapshot: ItemSnapshot, priceZAR: number, referenceId: string | null) => {
+    const wish = wishlistRef.current.find(item => item.status !== 'bought' && wishMatchesDeal({ ...item, status: 'active' }, snapshot));
+    if (!wish) return;
+    setWishlist(prev => prev.map(item => (item.id === wish.id
+      ? { ...item, status: 'bought', matchedItemName: snapshot.itemName, matchedPriceZAR: priceZAR, matchedStoreName: snapshot.outletName, voucherCode: referenceId ?? item.voucherCode }
+      : item)));
+    // Wishes the agent buys on its own are paid from the shopper's promo credit.
+    if (wish.autoBuy) setAuth(prev => (prev ? { ...prev, agentCreditBalanceZAR: Math.max(0, prev.agentCreditBalanceZAR - priceZAR) } : prev));
+  }, []);
 
   const emitEvent = useCallback((event: EngineEvent) => {
     commerce.handleEvent(event);
     celebrate(event);
-  }, [commerce.handleEvent, celebrate]);
+    if (event.type === 'paid') resolveWishOnPurchase(event.snapshot, event.priceZAR, event.referenceId);
+  }, [commerce.handleEvent, celebrate, resolveWishOnPurchase]);
+
+  /** What the agent should do about a deal: chase it (and for how much), or leave it alone. A wish beats the general filter. */
+  const planFor = useCallback((deal: Deal): { budgetZAR: number; wish: WishlistItem | null } | null => {
+    const wish = auth?.signedIn
+      ? wishlist.find(item => wishMatchesDeal(item, { itemName: deal.ad.itemName, sku: deal.ad.sku, category: deal.category })) ?? null
+      : null;
+    if (wish) return { budgetZAR: wishBudget(wish, maxBudgetZAR), wish };
+    return matchesIntent(deal.category, intent) ? { budgetZAR: maxBudgetZAR, wish: null } : null;
+  }, [wishlist, auth?.signedIn, intent, maxBudgetZAR]);
+
+  const pursue = useCallback((deal: Deal): { budgetZAR: number } | null => {
+    const plan = planFor(deal);
+    return plan ? { budgetZAR: plan.budgetZAR } : null;
+  }, [planFor]);
 
   useEffect(() => {
     const current = celebrations[0];
@@ -403,12 +444,9 @@ export default function App() {
       activeCelebrationRef.current = null;
       setCelebrations(prev => prev.filter(item => item.id !== current.id));
     };
-    setPinRequest({ id: current.storeId, at: Date.now() });
+    // Ease the card to the middle for a moment so the dive starts where the shopper is looking. It leaves right after, so it can never get stuck.
+    setPinRequest({ id: current.storeId, at: Date.now(), holdMs: RESOLVE_HOLD_MS });
     setFlashId(current.storeId);
-    if (current.kind === 'surface') {
-      window.setTimeout(finish, 1300);
-      return;
-    }
     const corner = current.kind;
     window.setTimeout(() => {
       const card = document.querySelector(`[data-deal-card="${current.storeId}"]`);
@@ -416,11 +454,13 @@ export default function App() {
       const cardRect = card?.getBoundingClientRect();
       const targetRect = target?.getBoundingClientRect();
       if (!cardRect || !targetRect || cardRect.width === 0 || prefersReducedMotion()) {
+        depart(current.campaignId);
         bumpCorner(corner);
-        window.setTimeout(finish, 500);
+        window.setTimeout(finish, 300);
         return;
       }
       setFlashId(null);
+      depart(current.campaignId);
       setFlight({
         key: current.id,
         from: { x: cardRect.left, y: cardRect.top, width: cardRect.width, height: cardRect.height },
@@ -428,15 +468,15 @@ export default function App() {
         itemName: current.itemName,
         category: current.category,
         priceZAR: current.priceZAR,
-        tone: corner === 'parked' || corner === 'cart' ? 'amber' : 'emerald',
+        tone: corner === 'parked' ? 'amber' : 'emerald',
         onDone: () => {
           setFlight(null);
           bumpCorner(corner);
-          window.setTimeout(finish, 300);
+          window.setTimeout(finish, 200);
         }
       });
-    }, 900);
-  }, [celebrations, bumpCorner]);
+    }, celebrations.length > 2 ? 160 : 700);
+  }, [celebrations, bumpCorner, depart]);
 
   const engine = useDealEngine({
     readings: estimate.readings,
@@ -444,105 +484,54 @@ export default function App() {
     fix,
     intent,
     maxBudgetZAR,
-    autopilot,
+    autopilot: agentActive,
     dataSource,
     matchRadiusM,
     proximityZone: PROXIMITY_ZONES[proximityMode].label,
+    pursue,
     onLog: addLog,
     onEvent: emitEvent
   });
 
-  const autoBuyTriedRef = useRef<Set<string>>(new Set());
+  // One decision for every agreed deal: buy it or park it, according to what the shopper asked for. No card waits for a tap.
+  const decidedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!autopilot || !autoBuyActive) return;
-    for (const deal of Object.values(engine.deals)) {
+    if (!agentActive) return;
+    const dealsNow = Object.values(engine.deals);
+    const paymentInFlight = dealsNow.some(deal => deal.status === 'paying');
+    for (const deal of dealsNow) {
       const price = deal.negotiatedPriceZAR;
-      if (deal.status !== 'agreed' || price === null || price > maxBudgetZAR || !matchesIntent(deal.category, intent)) continue;
-      if (autoBuyTriedRef.current.has(deal.ad.campaignId)) continue;
-      autoBuyTriedRef.current.add(deal.ad.campaignId);
-      addLog('LLAMA_AGENT', `Auto-buying ${deal.ad.itemName} for ${formatZAR(price)}.`);
-      void engine.pay(deal.storeId);
-      break;
-    }
-  }, [engine.deals, autopilot, autoBuyActive, intent, maxBudgetZAR, addLog, engine.pay]);
-
-  // Wishlist Proximity Discount Listener: Matches products across 31 stores, auto-buys with R1000 credit or parks
-  const wishlistEvaluatedRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!auth?.signedIn || wishlist.length === 0) return;
-
-    for (const deal of Object.values(engine.deals)) {
-      const price = deal.negotiatedPriceZAR ?? deal.ad.stickerPriceZAR;
-      const dealKey = `${deal.storeId}_${deal.ad.sku}_${deal.status}_${price}`;
-      if (wishlistEvaluatedRef.current.has(dealKey)) continue;
-
-      const itemName = deal.ad.itemName.toLowerCase();
-      const sku = deal.ad.sku.toLowerCase();
-      const category = deal.category.toLowerCase();
-
-      const matchedWish = wishlist.find(w =>
-        w.status === 'active' &&
-        (itemName.includes(w.query.toLowerCase()) ||
-         sku.includes(w.query.toLowerCase()) ||
-         category.includes(w.query.toLowerCase()))
-      );
-
-      if (!matchedWish) continue;
-      wishlistEvaluatedRef.current.add(dealKey);
-
-      // Evaluate: Auto-Buy with R1000 credit vs Park
-      if (matchedWish.autoBuy && auth.agentCreditBalanceZAR >= price) {
-        // Auto-Buy with promo credit!
-        const newBalance = Math.max(0, auth.agentCreditBalanceZAR - price);
-        setAuth(prev => prev ? ({ ...prev, agentCreditBalanceZAR: newBalance }) : null);
-
-        setWishlist(prev => prev.map(w => w.id === matchedWish.id ? ({
-          ...w,
-          status: 'bought',
-          matchedItemName: deal.ad.itemName,
-          matchedPriceZAR: price,
-          matchedStoreName: deal.location.outletName,
-          voucherCode: `MP-AUTO-${deal.storeId.toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
-        }) : w));
-
+      if (deal.status !== 'agreed' || price === null) continue;
+      const campaignId = deal.ad.campaignId;
+      if (decidedRef.current.has(campaignId)) continue;
+      const plan = planFor(deal);
+      if (!plan) continue;
+      const { wish, budgetZAR } = plan;
+      const credit = auth?.agentCreditBalanceZAR ?? 0;
+      const wantsAutoBuy = wish ? wish.autoBuy : autoBuyActive;
+      const canPay = price <= budgetZAR && (!wish || credit >= price);
+      if (wantsAutoBuy && canPay) {
+        if (paymentInFlight) continue;
+        decidedRef.current.add(campaignId);
+        addLog('LLAMA_AGENT', `Auto-buying ${deal.ad.itemName} for ${formatZAR(price)}${wish ? ` for your "${wish.query}" wish` : ''}.`);
         void engine.pay(deal.storeId);
-
-        addLog(
-          'LLAMA_AGENT',
-          `🤖 Wishlist Match! Personal Agent auto-bought "${deal.ad.itemName}" at ${deal.location.outletName} for ${formatZAR(price)} using R1,000 promo credit! (Remaining credit: ${formatZAR(newBalance)})`,
-          'success'
-        );
-
-        if (commerce.prefs.voice) {
-          speakText(`Personal Agent auto-bought ${deal.ad.itemName} for ${price} Rand using promo credit.`);
-        }
-      } else {
-        // Exceeds credit or auto-buy off: Park deal for review
-        emitEvent({
-          type: 'parked',
-          deal,
-          lastStorePriceZAR: price,
-          bestOfferZAR: matchedWish.targetMaxPriceZAR,
-          reason: `Wishlist match for "${matchedWish.query}". Parked for your review.`
-        });
-
-        setWishlist(prev => prev.map(w => w.id === matchedWish.id ? ({
-          ...w,
-          status: 'parked',
-          matchedItemName: deal.ad.itemName,
-          matchedPriceZAR: price,
-          matchedStoreName: deal.location.outletName
-        }) : w));
-
-        addLog(
-          'SYSTEM',
-          `🅿️ Wishlist Match: Parked "${deal.ad.itemName}" at ${formatZAR(price)} for your review (exceeds ${formatZAR(auth.agentCreditBalanceZAR)} credit balance).`,
-          'info'
-        );
+        break;
       }
+      decidedRef.current.add(campaignId);
+      const reason = price > budgetZAR
+        ? `Agreed at ${formatZAR(price)}, above your ${formatZAR(budgetZAR)} limit.`
+        : wish && wantsAutoBuy
+          ? `Agreed at ${formatZAR(price)}, but your promo credit is ${formatZAR(credit)}.`
+          : `Agreed at ${formatZAR(price)}. Parked for your OK because auto-buy is off.`;
+      emitEvent({ type: 'parked', deal, lastStorePriceZAR: price, bestOfferZAR: price, reason });
+      if (wish) {
+        setWishlist(prev => prev.map(item => (item.id === wish.id
+          ? { ...item, status: 'parked', matchedItemName: deal.ad.itemName, matchedPriceZAR: price, matchedStoreName: deal.location.outletName }
+          : item)));
+      }
+      addLog('SYSTEM', `Parked ${deal.ad.itemName}. ${reason}`, 'info');
     }
-  }, [engine.deals, auth, wishlist, addLog, emitEvent, commerce.prefs.voice, engine.pay]);
+  }, [engine.deals, agentActive, planFor, autoBuyActive, auth?.agentCreditBalanceZAR, addLog, emitEvent, engine.pay]);
 
   const purchaseCountRef = useRef<number>(0);
   useEffect(() => {
@@ -558,13 +547,27 @@ export default function App() {
   }, [dataSource, engine.refresh, engine.scan, addLog]);
 
   useEffect(() => {
-    if (dataSource !== 'demo' || !autopilot) return;
+    if (dataSource !== 'demo' || !agentActive) return;
     const timer = window.setInterval(() => {
       if (purchaseCountRef.current >= DEMO_PURCHASE_LIMIT) return;
       simulateShoppingRun();
     }, DEMO_RUN_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [dataSource, autopilot, simulateShoppingRun]);
+  }, [dataSource, agentActive, simulateShoppingRun]);
+
+  // Once every deal in a demo run has been bought or parked, walk on to the next set of stores instead of sitting on an empty screen.
+  const runComplete = (() => {
+    const all = Object.values(engine.deals);
+    return all.length > 0 && all.every(deal => departed.has(deal.ad.campaignId));
+  })();
+  useEffect(() => {
+    if (dataSource !== 'demo' || !agentActive || !runComplete) return;
+    const timer = window.setTimeout(() => {
+      if (purchaseCountRef.current >= DEMO_PURCHASE_LIMIT) return;
+      simulateShoppingRun();
+    }, DEMO_NEXT_RUN_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [dataSource, agentActive, runComplete, simulateShoppingRun]);
 
   const openDeal = useCallback((storeId: string) => {
     selectDeal(storeId);
@@ -592,11 +595,14 @@ export default function App() {
     [engine.deals, readingById, intent]
   );
 
+  // Deals still on screen. A parked or bought deal has left, so it no longer appears in the carousel or the lists.
+  const visibleDeals: ListedDeal[] = useMemo(() => dealList.filter(entry => !departed.has(entry.deal.ad.campaignId)), [dealList, departed]);
+
   useEffect(() => {
     if (selectedId && (engine.deals[selectedId] || readingById.get(selectedId)?.inRange)) return;
-    const first = dealList[0];
+    const first = visibleDeals[0];
     setSelectedId(first ? first.deal.storeId : null);
-  }, [selectedId, engine.deals, readingById, dealList]);
+  }, [selectedId, engine.deals, readingById, visibleDeals]);
 
   const selectedReading = selectedId ? readingById.get(selectedId) : undefined;
   const selectedDeal = selectedId ? engine.deals[selectedId] : undefined;
@@ -654,6 +660,8 @@ export default function App() {
 
   const resetSession = () => {
     engine.reset();
+    setDeparted(new Set());
+    decidedRef.current.clear();
     setLogs([]);
     setSelectedId(null);
     stopSpeech();
@@ -662,6 +670,8 @@ export default function App() {
   const changeDataSource = (source: DataSource) => {
     if (source === dataSource) return;
     engine.reset();
+    setDeparted(new Set());
+    decidedRef.current.clear();
     setSelectedId(null);
     setDataSource(source);
     addLog('SYSTEM', source === 'demo' ? 'Switched to demo stores. Offers and payments are simulated.' : 'Switched to the live backend.', 'success');
@@ -693,62 +703,12 @@ export default function App() {
       serviceOnline={engine.serviceOnline}
       dataSource={dataSource}
       matchRadius={matchRadiusM}
+      betweenDeals={Object.keys(engine.deals).length > 0}
     />
   );
 
-  // Real products populated into carousel cards with real ZAR prices and photography
-  const carouselEntries = useMemo(() => {
-    const list = [...dealList];
-    const liveStoreIds = new Set(dealList.map(item => item.deal.storeId));
-
-    // Populate carousel with real promotional products from the active mall's stores
-    const mallProducts = REAL_PRODUCTS.filter(p => p.mallId === activeMall.id);
-    for (const prod of mallProducts) {
-      if (liveStoreIds.has(prod.storeId)) continue;
-      const reading = readingById.get(prod.storeId);
-      const floor = Math.round(prod.stickerPriceZAR * prod.floorRatio);
-
-      const realDeal: Deal = {
-        storeId: prod.storeId,
-        category: prod.category,
-        location: {
-          mallId: prod.mallId,
-          outletId: prod.storeId,
-          outletName: prod.storeName
-        },
-        ad: {
-          campaignId: `promo_${prod.id}`,
-          sku: prod.sku,
-          itemName: prod.itemName,
-          stickerPriceZAR: prod.stickerPriceZAR,
-          imageUrl: prod.imageUrl
-        },
-        status: 'discovered',
-        negotiatedPriceZAR: floor,
-        transactionToken: null,
-        rounds: [
-          {
-            round: 1,
-            agentOfferZAR: floor,
-            storeResponse: 'countered',
-            storePriceZAR: floor
-          }
-        ],
-        referenceId: null,
-        firstSeen: Date.now() - 60000,
-        lastSeen: Date.now(),
-        note: `${prod.tag} · Real South African retail item`
-      };
-
-      list.push({
-        deal: realDeal,
-        reading,
-        matches: matchesIntent(prod.category, intent)
-      });
-    }
-
-    return list;
-  }, [dealList, readingById, activeMall.id, intent]);
+  // The carousel shows real deals the agent is working on, one per store. Nothing is invented to fill it.
+  const carouselEntries = visibleDeals;
 
   const renderCompassPanel = (compact: boolean = false) => (
     <section className={`border border-white/[0.06] bg-white/[0.02] backdrop-blur ${compact ? 'rounded-[1.5rem] p-2.5' : 'rounded-[2rem] p-3 sm:p-5'}`}>
@@ -846,7 +806,7 @@ export default function App() {
   );
 
   const renderCompactList = (limit: number) => {
-    const items = dealList.slice(0, limit);
+    const items = visibleDeals.slice(0, limit);
     if (items.length === 0) return <p className="text-xs text-slate-500">No deals nearby yet.</p>;
     return (
       <div className="space-y-2">
@@ -1155,7 +1115,9 @@ export default function App() {
                 </span>
               </button>
             ) : (
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+                <MuseBadge />
+
                 {/* Promo Credit Balance */}
                 <button
                   type="button"
@@ -1272,6 +1234,8 @@ export default function App() {
           setTimeout(() => setIsWishlistModalOpen(true), 350);
         }}
       />
+
+      {!auth && <AgentOnboarding onCreated={setAuth} />}
 
       {/* Voice & Text Shopping Wishlist Modal */}
       <WishlistModal

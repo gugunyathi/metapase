@@ -2,6 +2,8 @@ import { BargainRequest, BargainResponse, DealClient, ProximityPingPayload, Prox
 import { MATCH_RADIUS_M, STORE_NODES } from '../config/venue';
 import { MALLS_DATABASE } from '../config/malls';
 import { REAL_PRODUCTS } from '../config/products';
+import { museCounter } from './muse';
+import { demoRecordSale, demoStockOf, OutOfStockError } from './demoStore';
 
 export interface DemoProduct {
   sku: string;
@@ -72,17 +74,39 @@ const buildCatalog = (): Record<string, DemoProduct[]> => {
 export const CATALOG: Record<string, DemoProduct[]> = buildCatalog();
 
 const ROTATION_MS = 5 * 60 * 1000;
+const TRACKED_SKUS = new Set(REAL_PRODUCTS.map(product => product.sku));
+const isTracked = (sku: string): boolean => TRACKED_SKUS.has(sku);
 const COUNTER_STEP = 0.4;
 
 const campaigns = new Map<string, DemoProduct>();
 let slotOffset = 0;
 
-export const rotateDemoCatalog = (): void => {
-  slotOffset += 1;
+// Stores come into range one after another, the way they would while someone walks past them,
+// instead of every offer landing in the same second.
+const ARRIVAL_SPREAD_MS = 9000;
+let runStartedAt = Date.now();
+
+const arrivalDelayMs = (storeId: string): number => {
+  let hash = 0;
+  for (let index = 0; index < storeId.length; index++) hash = (hash * 31 + storeId.charCodeAt(index)) >>> 0;
+  return hash % ARRIVAL_SPREAD_MS;
 };
 
-const sessions = new Map<string, number>();
-const tokens = new Map<string, number>();
+export const rotateDemoCatalog = (): void => {
+  slotOffset += 1;
+  runStartedAt = Date.now();
+};
+
+const sessions = new Map<string, { counterZAR: number; rounds: number }>();
+const campaignStores = new Map<string, string>();
+const tokens = new Map<string, { priceZAR: number; campaignId: string }>();
+const campaignStoreIds = new Map<string, string>();
+let shopperId: string | undefined;
+
+/** The agent that is shopping, so receipts in the merchant hub name the right shopper. */
+export const setDemoShopper = (userId: string | undefined): void => {
+  shopperId = userId;
+};
 
 const wait = (): Promise<void> => new Promise(resolve => window.setTimeout(resolve, 200 + Math.random() * 300));
 const randomCode = (): string => Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -94,14 +118,19 @@ const ping = async (payload: ProximityPingPayload): Promise<ProximityResponse | 
 
   const node = ALL_STORE_NODES.find(item => item.beaconUuid.toLowerCase() === beacon?.uuid?.toLowerCase());
   if (!node || payload.positioning.estimatedDistanceM > effectiveRadiusM) return null;
+  if (Date.now() - runStartedAt < arrivalDelayMs(node.id)) return null;
 
   const products = CATALOG[node.id] ?? CATALOG[node.id.split('_').slice(1).join('_')] ?? CATALOG['zara'];
   if (!products || products.length === 0) return null;
 
   const slot = Math.floor(Date.now() / ROTATION_MS) + slotOffset;
-  const product = products[slot % products.length];
-  const campaignId = `demo_${node.id}_${slot}`;
+  // Sold-out items are never offered: the store's agent moves on to the next product it still has on the shelf.
+  const product = products.map((_, offset) => products[(slot + offset) % products.length]).find(candidate => !isTracked(candidate.sku) || demoStockOf(candidate.sku) > 0);
+  if (!product) return null;
+  const campaignId = `demo_${node.id}_${slot}_${product.sku}`;
   campaigns.set(campaignId, product);
+  campaignStoreIds.set(campaignId, node.id);
+  campaignStores.set(campaignId, node.name);
 
   return {
     resolvedLocation: {
@@ -127,19 +156,45 @@ const bargain = async (request: BargainRequest): Promise<BargainResponse> => {
   if (request.agentOfferZAR >= floor) {
     sessions.delete(request.sessionId);
     const token = `demo_tok_${randomCode()}`;
-    tokens.set(token, request.agentOfferZAR);
+    tokens.set(token, { priceZAR: request.agentOfferZAR, campaignId: request.campaignId });
     return { status: 'OFFER_ACCEPTED', finalPriceZAR: request.agentOfferZAR, transactionToken: token };
   }
-  const lastCounter = sessions.get(request.sessionId) ?? product.stickerPriceZAR;
-  const counter = Math.max(floor, Math.round(lastCounter - (lastCounter - request.agentOfferZAR) * COUNTER_STEP));
-  sessions.set(request.sessionId, counter);
-  return { status: 'COUNTER_OFFER_PROPOSED', finalPriceZAR: counter };
+  const session = sessions.get(request.sessionId);
+  const lastCounter = session?.counterZAR ?? product.stickerPriceZAR;
+  const round = (session?.rounds ?? 0) + 1;
+  let counter = Math.max(floor, Math.round(lastCounter - (lastCounter - request.agentOfferZAR) * COUNTER_STEP));
+  // The store's Muse agent picks the counter and words it. Whatever comes back is clamped again here: never under the floor, never above the last counter.
+  const muse = await museCounter({
+    storeName: campaignStores.get(request.campaignId) ?? 'the store',
+    itemName: product.itemName,
+    stickerZAR: product.stickerPriceZAR,
+    floorZAR: floor,
+    offerZAR: request.agentOfferZAR,
+    lastCounterZAR: lastCounter,
+    round,
+    maxRounds: 5
+  });
+  if (muse && Number.isFinite(muse.counterZAR)) counter = Math.max(floor, Math.min(lastCounter, Math.round(muse.counterZAR)));
+  sessions.set(request.sessionId, { counterZAR: counter, rounds: round });
+  return { status: 'COUNTER_OFFER_PROPOSED', finalPriceZAR: counter, message: muse?.message, engine: muse?.engine };
 };
 
 const settle = async (request: SettleRequest): Promise<SettleResponse> => {
   await wait();
-  if (!tokens.has(request.transactionToken)) return { success: false };
+  const grant = tokens.get(request.transactionToken);
+  if (!grant) return { success: false };
   tokens.delete(request.transactionToken);
+  // Take one unit off the shelf and issue a voucher. Items outside the stocked catalog (the five legacy stores) just settle.
+  const product = campaigns.get(grant.campaignId);
+  if (product && isTracked(product.sku)) {
+    try {
+      const receipt = demoRecordSale({ storeId: campaignStoreIds.get(grant.campaignId), sku: product.sku, priceZAR: grant.priceZAR, purchasedBy: 'autonomous_personal_agent', userId: shopperId });
+      return { success: true, referenceId: receipt.voucherCode };
+    } catch (error) {
+      if (error instanceof OutOfStockError) return { success: false };
+      throw error;
+    }
+  }
   return { success: true, referenceId: `DEMO-${randomCode()}` };
 };
 

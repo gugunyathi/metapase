@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { parseWish } from '../lib/muse';
 import { Mic, MicOff, Trash2, X, Sparkles, Bot, Radio } from 'lucide-react';
 import { WishlistItem } from '../types/metapase';
 import { formatZAR } from '../lib/format';
@@ -38,6 +39,8 @@ export default function WishlistModal({
   const [isListening, setIsListening] = useState<boolean>(false);
   const [voiceTranscript, setVoiceTranscript] = useState<string>('');
   const [speechSupported, setSpeechSupported] = useState<boolean>(true);
+  const [reading, setReading] = useState<boolean>(false);
+  const [readNote, setReadNote] = useState<string>('');
 
   const recognitionRef = useRef<any>(null);
 
@@ -103,13 +106,22 @@ export default function WishlistModal({
     }
   };
 
-  const handleAdd = (queryText: string, maxPrice: number) => {
+  const handleAdd = async (queryText: string, maxPrice: number) => {
     const cleaned = queryText.trim();
-    if (!cleaned) return;
+    if (!cleaned || reading) return;
+    setReading(true);
+    // Muse turns a sentence like "a smart blazer for a wedding under R1500" into a product, keywords, a price and an auto-buy choice.
+    const parsed = await parseWish(cleaned);
+    setReading(false);
+    const budget = parsed.maxBudgetZAR ?? maxPrice;
+    setReadNote(`${parsed.engine === 'muse' ? 'Muse read it' : 'Added'}: ${parsed.query}, up to R${budget}${parsed.autoBuy || autoBuy ? ', buys automatically' : ', asks first'}.`);
     onAddWishlistItem({
-      query: cleaned,
-      targetMaxPriceZAR: maxPrice,
-      autoBuy
+      query: parsed.query,
+      keywords: parsed.keywords,
+      category: parsed.category ?? undefined,
+      originalText: cleaned,
+      targetMaxPriceZAR: budget,
+      autoBuy: parsed.autoBuy || autoBuy
     });
     setInputText('');
     setVoiceTranscript('');
@@ -160,7 +172,7 @@ export default function WishlistModal({
               onKeyDown={e => {
                 if (e.key === 'Enter') handleAdd(inputText, targetMaxPrice);
               }}
-              placeholder={isListening ? 'Listening to speech...' : 'Type or speak: e.g. "Zara linen blazer", "running shoes"'}
+              placeholder={isListening ? 'Listening to speech...' : 'Say it your way: "a smart blazer for a wedding under R1500"'}
               className="flex-1 rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
             />
 
@@ -183,12 +195,13 @@ export default function WishlistModal({
             <button
               type="button"
               onClick={() => handleAdd(inputText, targetMaxPrice)}
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || reading}
               className="rounded-xl bg-amber-300 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-amber-200 disabled:opacity-40"
             >
-              Add
+              {reading ? 'Reading…' : 'Add'}
             </button>
           </div>
+          {readNote && <p role="status" className="text-xs text-sky-200">{readNote}</p>}
 
           {/* Voice Listening Wave Indicator */}
           {isListening && (

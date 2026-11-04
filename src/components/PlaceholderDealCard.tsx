@@ -190,6 +190,8 @@ interface PlaceholderDealCardProps {
   serviceOnline: boolean | null;
   dataSource: 'live' | 'demo';
   matchRadius?: number;
+  /** True when deals were seen a moment ago and the agent has already bought or parked them. Shows a short, steady banner instead of the catalog. */
+  betweenDeals?: boolean;
 }
 
 export default function PlaceholderDealCard({
@@ -197,6 +199,7 @@ export default function PlaceholderDealCard({
   serviceOnline,
   dataSource,
   matchRadius = 50,
+  betweenDeals = false,
 }: PlaceholderDealCardProps) {
   const statusLine =
     serviceOnline === false && dataSource === 'live'
@@ -204,6 +207,22 @@ export default function PlaceholderDealCard({
       : isScanning
       ? 'Scanning for Bluetooth beacons and GPS matches\u2026'
       : `Ready to match stores within ${matchRadius} m`;
+
+  if (betweenDeals) {
+    return (
+      <div className="flex min-h-[22rem] w-full items-center justify-center px-2">
+        <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-[#0c1220] px-4 py-3">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-400/20 text-emerald-300">
+            <Zap className="h-4 w-4 animate-pulse" />
+          </span>
+          <div>
+            <p className="text-xs font-semibold text-white">Every deal here is settled</p>
+            <p className="text-[11px] text-slate-400">{dataSource === 'demo' ? 'Walking on to the next stores…' : `Waiting for the next store within ${matchRadius} m`}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-5">

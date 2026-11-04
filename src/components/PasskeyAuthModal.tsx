@@ -17,8 +17,8 @@ export default function PasskeyAuthModal({
   initialMode = 'signup'
 }: PasskeyAuthModalProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
-  const [name, setName] = useState<string>('Gugu Nyathi');
-  const [email, setEmail] = useState<string>('gugu@metapase.app');
+  const [name, setName] = useState<string>('MetaPase shopper');
+  const [email, setEmail] = useState<string>('shopper@example.com');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,7 +184,7 @@ export default function PasskeyAuthModal({
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="e.g. Gugu Nyathi"
+                placeholder="e.g. Thandi Mokoena"
                 className="w-full rounded-xl border border-white/10 bg-slate-800/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
               />
             </div>
@@ -196,7 +196,7 @@ export default function PasskeyAuthModal({
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="e.g. gugu@metapase.app"
+              placeholder="e.g. thandi@example.com"
               className="w-full rounded-xl border border-white/10 bg-slate-800/80 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
             />
           </div>

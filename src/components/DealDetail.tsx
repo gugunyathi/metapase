@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, CircleCheck, Eye, Handshake, LoaderCircle, Navigation2, SquareParking, Wallet } from 'lucide-react';
+import { ArrowLeft, CircleCheck, Eye, Handshake, LoaderCircle, Navigation2, SquareParking, Wallet, Sparkles } from 'lucide-react';
 import { BuyResult, Deal, NodeReading } from '../types/metapase';
 import { CATEGORY_STYLE, STATUS_META } from './DealCard';
 import { MAX_ROUNDS } from '../config/venue';
@@ -177,6 +177,12 @@ export default function DealDetail({ deal, reading, heading, maxBudgetZAR, match
                   <span className={`tabular-nums ${round.storeResponse === 'accepted' ? 'text-emerald-300' : round.storeResponse === 'countered' ? 'text-amber-200' : 'text-rose-300'}`}>
                     {round.storeResponse === 'accepted' ? `Accepted ${formatZAR(round.storePriceZAR ?? round.agentOfferZAR)}` : round.storeResponse === 'countered' ? `Store asked ${formatZAR(round.storePriceZAR ?? 0)}` : 'Store ended talks'}
                   </span>
+                  {round.storeMessage && (
+                    <p className="flex basis-full items-start gap-1.5 text-xs leading-relaxed text-slate-300">
+                      <Sparkles className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${round.engine === 'muse' ? 'text-sky-300' : 'text-slate-500'}`} aria-hidden="true" />
+                      <span><span className="text-slate-500">Store agent{round.engine === 'muse' ? ' (Muse Spark)' : ''}: </span>“{round.storeMessage}”</span>
+                    </p>
+                  )}
                 </li>
               ))}
             </ol>

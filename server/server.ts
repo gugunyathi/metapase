@@ -3,6 +3,14 @@ import { createHash, createPublicKey, randomBytes, verify as verifySignature } f
 import { getAllMerchantAgents, getMerchantAgent } from '../agent/merchantAgents.js';
 import { MALLS_DATABASE } from '../src/config/malls.js';
 import { db, initDatabase, isDbConnected } from './db.js';
+import { handleMuseRequest, museMerchantCounter, museStatus } from './muse.js';
+
+// Load .env before anything reads process.env (Node 22+). A missing file is fine: real environment variables still work.
+try {
+  process.loadEnvFile('.env');
+} catch {
+  /* no .env file */
+}
 
 type Category = 'apparel' | 'footwear' | 'groceries' | 'electronics' | 'beauty';
 
@@ -59,10 +67,8 @@ const ALLOWED_ORIGINS = new Set(
 const ALLOW_SANDBOX_PAY = process.env.METAPASE_ALLOW_SANDBOX_PAY !== 'false';
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const CHALLENGE_TTL_MS = 2 * 60 * 1000;
-const SESSION_TTL_MS = 15 * 60 * 1000;
 const MAX_BODY_BYTES = 64 * 1024;
-const COUNTER_STEP = 0.4;
-const SUPPORTED_ALGORITHMS = new Set([-7, -8, -257]);
+const clientKey = (req: IncomingMessage): string => String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? 'unknown').split(',')[0].trim();
 
 const CAMPAIGNS: AdCampaign[] = [
   // Sandton City
@@ -491,10 +497,27 @@ const ROUTES: Record<string, RouteHandler> = {
     }
 
     const lastCounter = session?.lastCounterZAR ?? campaign.stickerPriceZAR;
-    const counter = Math.max(campaign.floorPriceZAR, Math.round(lastCounter - (lastCounter - offer) * COUNTER_STEP));
-    NEGOTIATIONS.set(payload.sessionId, { campaignId: campaign.campaignId, lastCounterZAR: counter, rounds: (session?.rounds ?? 0) + 1, updatedAt: Date.now() });
-    return [200, { status: 'COUNTER_OFFER_PROPOSED', finalPriceZAR: counter }];
+    const round = (session?.rounds ?? 0) + 1;
+    // The store's Muse agent chooses the counter and words it. The floor and the "never raise a price" rule are enforced in code.
+    const muse = await museMerchantCounter({
+      storeName: campaign.outletName,
+      itemName: campaign.itemName,
+      stickerZAR: campaign.stickerPriceZAR,
+      floorZAR: campaign.floorPriceZAR,
+      offerZAR: offer,
+      lastCounterZAR: lastCounter,
+      round,
+      maxRounds: 5
+    });
+    const counter = muse.counterZAR;
+    NEGOTIATIONS.set(payload.sessionId, { campaignId: campaign.campaignId, lastCounterZAR: counter, rounds: round, updatedAt: Date.now() });
+    return [200, { status: 'COUNTER_OFFER_PROPOSED', finalPriceZAR: counter, message: muse.message, engine: muse.engine }];
   },
+
+  'GET /api/muse/status': async () => [200, museStatus()],
+  'POST /api/muse/counter': async req => handleMuseRequest('counter', 'POST', await parseJsonBody<unknown>(req), clientKey(req)),
+  'POST /api/muse/intent': async req => handleMuseRequest('intent', 'POST', await parseJsonBody<unknown>(req), clientKey(req)),
+  'POST /api/muse/insights': async req => handleMuseRequest('insights', 'POST', await parseJsonBody<unknown>(req), clientKey(req)),
 
   'POST /api/pay/passkey/challenge': async () => [200, { challenge: issueChallenge('register'), rpId: RP_ID }],
 
@@ -552,7 +575,7 @@ const ROUTES: Record<string, RouteHandler> = {
     return [200, {
       status: 'ONLINE',
       engine: 'Metapase Multi-Agent Engine',
-      protocol: 'Personal Agent Protocol 1.0 (Meta / Shopify / Stripe / Sierra / Walmart)',
+      protocol: 'MetaPase agent protocol 1.0',
       activeMerchantsCount: agents.length,
       database: isDbConnected() ? 'connected (mongodb)' : 'active (in-memory persistence)',
       timestamp: new Date().toISOString()
@@ -562,8 +585,7 @@ const ROUTES: Record<string, RouteHandler> = {
   'GET /api/info': async () => [200, {
     name: 'Metapase Proximity Commerce Engine',
     version: '1.0.0',
-    protocol: 'Personal Agent Protocol 1.0',
-    partners: ['Meta', 'Shopify', 'Stripe', 'Sierra', 'Walmart'],
+    protocol: 'MetaPase agent protocol 1.0',
     matchRadiusM: MATCH_RADIUS_M,
     rpId: RP_ID,
     database: isDbConnected() ? 'MongoDB Atlas' : 'In-Memory Persistence',
@@ -868,7 +890,7 @@ const ROUTES: Record<string, RouteHandler> = {
     }
 
     // Save transaction to database and decrement product stock
-    await db.transactions.save(receipt);
+    await db.transactions.save({ ...receipt, status: receipt.status ?? 'ISSUED' });
     try {
       await db.inventory.decrementStock(payload.sku, 1);
     } catch {}
@@ -1010,7 +1032,7 @@ const ROUTES: Record<string, RouteHandler> = {
     }
 
     // Save transaction receipt to database and decrement stock
-    await db.transactions.save(receipt);
+    await db.transactions.save({ ...receipt, status: receipt.status ?? 'ISSUED' });
     try {
       await db.inventory.decrementStock(payload.sku, 1);
     } catch {}
@@ -1045,8 +1067,32 @@ const ROUTES: Record<string, RouteHandler> = {
   },
 
   // USER & PERSONAL AGENT APIS
+  // One click creates a shopper's agent: a user record, an agent with R1,000 welcome credit, stored in MongoDB.
+  'POST /api/user/agent/create': async req => {
+    const body = await parseJsonBody<{ userId?: unknown; userName?: unknown; agentName?: unknown }>(req).catch(() => ({} as { userId?: unknown; userName?: unknown; agentName?: unknown }));
+    const tidy = (value: unknown, max: number): string => String(value ?? '').replace(/[^\p{L}\p{N} ·,'._-]/gu, '').trim().slice(0, max);
+    const userId = typeof body.userId === 'string' && /^[a-zA-Z0-9_-]{6,64}$/.test(body.userId) ? body.userId : `user_${randomBytes(6).toString('hex')}`;
+    const existing = await db.agents.findByUserId(userId);
+    const now = Date.now();
+    const agent = existing ?? await (async () => {
+      await db.users.upsert({ userId, userName: tidy(body.userName, 60) || 'MetaPase shopper', email: '', createdAt: now, updatedAt: now });
+      return db.agents.upsert({
+        agentId: `agent_${userId}`,
+        userId,
+        agentName: tidy(body.agentName, 40) || 'Personal Muse Agent',
+        creditBalanceZAR: 1000,
+        promoCode: 'WELCOME-R1000-ACTIVE',
+        delegationScope: ['browse', 'bargain', 'transact'],
+        createdAt: now,
+        updatedAt: now
+      });
+    })();
+    return [existing ? 200 : 201, { userId: agent.userId, agentId: agent.agentId, agentName: agent.agentName, creditBalanceZAR: agent.creditBalanceZAR, promoApplied: true, activeWishlistCount: 0 }];
+  },
+
   'GET /api/user/agent': async req => {
-    const userId = (req.headers['x-user-id'] as string) || 'user_shopper_01';
+    const queryUserId = new URL(req.url ?? '', 'http://localhost').searchParams.get('userId');
+    const userId = (req.headers['x-user-id'] as string) || queryUserId || 'user_shopper_01';
     let agent = await db.agents.findByUserId(userId);
     if (!agent) {
       agent = await db.agents.upsert({
@@ -1125,6 +1171,8 @@ const ROUTES: Record<string, RouteHandler> = {
     if (!existing) return [404, { error: 'NOT_FOUND', message: 'Wishlist item not found.' }];
     const updated = await db.wishlists.update(id, { autoBuy: !existing.autoBuy });
     return [200, { success: true, item: updated }];
+  },
+
   // POINT OF SALE AUTO-FINANCING & 12-MONTH INSTALLMENT PLANS
   'GET /api/user/credit-plans': async req => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -1250,7 +1298,7 @@ const ROUTES: Record<string, RouteHandler> = {
     const receipt = await db.transactions.findByVoucherCode(code);
     if (!receipt) return [404, { error: 'VOUCHER_NOT_FOUND', message: 'Voucher not found.' }];
     receipt.status = 'REDEEMED';
-    await db.transactions.save(receipt);
+    await db.transactions.save({ ...receipt, status: receipt.status ?? 'ISSUED' });
 
     try {
       await db.activities.log({

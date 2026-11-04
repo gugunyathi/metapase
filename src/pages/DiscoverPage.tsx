@@ -10,6 +10,7 @@ import { REAL_PRODUCTS, CatalogProduct } from '../config/products';
 import { CATEGORY_STYLE } from '../components/DealCard';
 import { haversineM } from '../lib/geo';
 import { formatDistance, formatZAR } from '../lib/format';
+import { api } from '../lib/api';
 import MerchantHubModal from '../components/MerchantHubModal';
 
 interface DiscoverPageProps {
@@ -156,41 +157,9 @@ export default function DiscoverPage({
     });
 
     try {
-      const apiBase = (import.meta.env.VITE_METAPASE_API_BASE as string | undefined) ?? 'http://localhost:3000';
-      let receipt: any = null;
-
-      try {
-        const res = await fetch(`${apiBase}/api/merchants/manual-buy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            storeId: product.storeId,
-            sku: product.sku,
-            priceZAR: floorPrice
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          receipt = data.receipt;
-        }
-      } catch {
-        // Fallback for offline demo mode
-      }
-
-      if (!receipt) {
-        receipt = {
-          receiptId: `REC-MAN-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-          voucherCode: `MP-MANUAL-${product.storeId.toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-          storeName: product.storeName,
-          mallName: activeMall.shortName,
-          itemName: product.itemName,
-          amountZAR: floorPrice,
-          savingsZAR: product.stickerPriceZAR - floorPrice,
-          purchasedBy: 'manual_user_checkout',
-          timestamp: new Date().toISOString(),
-          authorizationRef: `AUTH-1CLICK-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-        };
-      }
+      const result = await api.manualBuy({ storeId: product.storeId, sku: product.sku, priceZAR: floorPrice });
+      if (!result.ok || !result.data?.receipt) throw new Error((result.data as { message?: string } | null)?.message ?? 'The store could not complete this purchase.');
+      const receipt = result.data.receipt;
 
       setTxModal(prev => prev ? ({
         ...prev,
@@ -213,7 +182,6 @@ export default function DiscoverPage({
 
   // Autonomous Personal Agent Buy Flow
   const handleAutonomousBuy = async (product: CatalogProduct) => {
-    const floorPrice = Math.round(product.stickerPriceZAR * product.floorRatio);
     const budget = Math.round(product.stickerPriceZAR * 0.9);
 
     setTxModal({
@@ -239,41 +207,9 @@ export default function DiscoverPage({
     setTxModal(prev => prev ? ({ ...prev, stages: prev.stages.map((s, idx) => idx <= 2 ? { ...s, done: true } : s) }) : null);
 
     try {
-      const apiBase = (import.meta.env.VITE_METAPASE_API_BASE as string | undefined) ?? 'http://localhost:3000';
-      let receipt: any = null;
-
-      try {
-        const res = await fetch(`${apiBase}/api/merchants/autonomous-buy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            storeId: product.storeId,
-            sku: product.sku,
-            maxBudgetZAR: budget
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          receipt = data.receipt;
-        }
-      } catch {
-        // Fallback for offline demo mode
-      }
-
-      if (!receipt) {
-        receipt = {
-          receiptId: `REC-AUTO-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-          voucherCode: `MP-VOUCHER-${product.storeId.toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-          storeName: product.storeName,
-          mallName: activeMall.shortName,
-          itemName: product.itemName,
-          amountZAR: floorPrice,
-          savingsZAR: product.stickerPriceZAR - floorPrice,
-          purchasedBy: 'autonomous_personal_agent',
-          timestamp: new Date().toISOString(),
-          authorizationRef: `AUTH-STRIPE-VIRTUAL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-        };
-      }
+      const result = await api.autonomousBuy({ storeId: product.storeId, sku: product.sku, maxBudgetZAR: budget });
+      if (!result.ok || !result.data?.receipt) throw new Error((result.data as { message?: string } | null)?.message ?? 'The store agent could not agree a price within your budget.');
+      const receipt = result.data.receipt;
 
       setTxModal(prev => prev ? ({
         ...prev,

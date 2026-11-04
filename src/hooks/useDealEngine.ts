@@ -18,6 +18,11 @@ export interface DealEngineOptions {
   dataSource: DataSource;
   matchRadiusM?: number;
   proximityZone?: string;
+  /**
+   * Decides which discovered deals the agent should chase on its own, and the most it may pay for each.
+   * Return null to leave a deal alone. Defaults to "matches the intent filter, within maxBudgetZAR".
+   */
+  pursue?: (deal: Deal) => { budgetZAR: number } | null;
   onLog: LogFn;
   onEvent?: (event: EngineEvent) => void;
 }
@@ -29,7 +34,7 @@ export interface DealEngine {
   stats: EngineStats;
   serviceOnline: boolean | null;
   scan: () => Promise<void>;
-  negotiate: (storeId: string) => Promise<void>;
+  negotiate: (storeId: string, budgetOverrideZAR?: number) => Promise<void>;
   pay: (storeId: string) => Promise<void>;
   buyAtPrice: (item: ItemSnapshot, priceZAR: number) => Promise<BuyResult>;
   reset: () => void;
@@ -185,10 +190,11 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
     }
   }, [commit, markService]);
 
-  const negotiate = useCallback(async (storeId: string) => {
+  const negotiate = useCallback(async (storeId: string, budgetOverrideZAR?: number) => {
     const deal = dealsRef.current[storeId];
     if (!deal || negotiatingRef.current.has(storeId) || LOCKED_STATUSES.includes(deal.status)) return;
-    const { maxBudgetZAR, readings, onLog, dataSource } = optionsRef.current;
+    const { readings, onLog, dataSource } = optionsRef.current;
+    const maxBudgetZAR = budgetOverrideZAR !== undefined && Number.isFinite(budgetOverrideZAR) && budgetOverrideZAR > 0 ? budgetOverrideZAR : optionsRef.current.maxBudgetZAR;
     const client = getClient(dataSource);
     const outlet = deal.location.outletName;
     const sticker = deal.ad.stickerPriceZAR;
@@ -242,9 +248,10 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
 
         if (response.status === 'COUNTER_OFFER_PROPOSED') {
           const counter = response.finalPriceZAR;
-          rounds.push({ round, agentOfferZAR: offer, storeResponse: 'countered', storePriceZAR: counter });
+          rounds.push({ round, agentOfferZAR: offer, storeResponse: 'countered', storePriceZAR: counter, storeMessage: response.message, engine: response.engine });
           patch(storeId, { rounds: [...rounds] });
           onLog('LLAMA_AGENT', `${outlet} countered at ${formatZAR(counter)}.`, 'warning');
+          if (response.engine === 'muse' && response.message) onLog('MUSE', `${outlet}’s store agent: “${response.message}”`);
           const nextOffer = counter <= offer ? counter : Math.max(offer + 1, Math.round((offer + counter) / 2));
           if (nextOffer > maxBudgetZAR) {
             outcome = { status: 'over_budget', note: `The next step, ${formatZAR(nextOffer)}, would pass your ${formatZAR(maxBudgetZAR)} budget. Store's last price was ${formatZAR(counter)}.` };
@@ -390,13 +397,17 @@ export function useDealEngine(options: DealEngineOptions): DealEngine {
 
   useEffect(() => {
     if (!options.autopilot || negotiatingRef.current.size > 0) return;
-    const { readings } = optionsRef.current;
+    const { readings, intent, maxBudgetZAR, pursue } = optionsRef.current;
     const distanceOf = (storeId: string): number => readings.find(reading => reading.node.id === storeId)?.distanceM ?? Number.POSITIVE_INFINITY;
-    const candidate = Object.values(deals)
-      .filter(deal => deal.status === 'discovered' && matchesIntent(deal.category, options.intent) && distanceOf(deal.storeId) <= MATCH_RADIUS_M)
-      .sort((a, b) => distanceOf(a.storeId) - distanceOf(b.storeId))[0];
-    if (candidate) void negotiate(candidate.storeId);
-  }, [deals, options.autopilot, options.intent, negotiate]);
+    const planFor = pursue ?? ((deal: Deal) => (matchesIntent(deal.category, intent) ? { budgetZAR: maxBudgetZAR } : null));
+    const candidates = Object.values(deals)
+      .filter(deal => deal.status === 'discovered' && distanceOf(deal.storeId) <= MATCH_RADIUS_M)
+      .map(deal => ({ deal, plan: planFor(deal) }))
+      .filter((entry): entry is { deal: Deal; plan: { budgetZAR: number } } => entry.plan !== null)
+      .sort((a, b) => distanceOf(a.deal.storeId) - distanceOf(b.deal.storeId));
+    const next = candidates[0];
+    if (next) void negotiate(next.deal.storeId, next.plan.budgetZAR);
+  }, [deals, options.autopilot, options.intent, options.pursue, negotiate]);
 
   return { deals, isScanning, lastScanAt, stats, serviceOnline, scan, negotiate, pay, buyAtPrice, reset, refresh };
 }
