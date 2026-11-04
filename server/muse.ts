@@ -491,22 +491,22 @@ export async function museGlobalProductSearch(query: string, config?: MuseConfig
 
     if (!items.length) return fallback();
 
-    return items.slice(0, 4).map(item => ({
-      title: oneLine(item.title || item.name, 100) || `${clean} Online Item`,
-      brand: oneLine(item.brand, 40) || 'Global Brand',
+    return (items as Array<Record<string, unknown>>).slice(0, 4).map(item => ({
+      title: oneLine(typeof item.title === 'string' ? item.title : String(item.name || ''), 100) || `${clean} Online Item`,
+      brand: oneLine(String(item.brand || ''), 40) || 'Global Brand',
       priceZAR: Math.max(50, Math.round(Number(item.priceZAR) || 999)),
-      category: ['apparel', 'footwear', 'groceries', 'electronics', 'beauty'].includes(item.category)
+      category: (['apparel', 'footwear', 'groceries', 'electronics', 'beauty'].includes(String(item.category))
         ? item.category
-        : 'electronics',
+        : 'electronics') as GlobalProductResult['category'],
       imageUrl: typeof item.imageUrl === 'string' && item.imageUrl.startsWith('http')
         ? item.imageUrl
-        : CATEGORY_IMAGES[item.category] || CATEGORY_IMAGES.electronics,
-      description: oneLine(item.description, 200) || `Web-discovered product matching ${clean}`,
-      sourceDomain: oneLine(item.sourceDomain, 50) || 'google.com/shopping',
+        : CATEGORY_IMAGES[String(item.category)] || CATEGORY_IMAGES.electronics,
+      description: oneLine(String(item.description || ''), 200) || `Web-discovered product matching ${clean}`,
+      sourceDomain: oneLine(String(item.sourceDomain || ''), 50) || 'google.com/shopping',
       sourceUrl: typeof item.sourceUrl === 'string' && item.sourceUrl.startsWith('http')
         ? item.sourceUrl
         : `https://www.google.com/search?q=${encodeURIComponent(clean)}`,
-      keywords: Array.isArray(item.keywords) ? item.keywords.map(k => String(k).toLowerCase()) : [clean.toLowerCase()]
+      keywords: Array.isArray(item.keywords) ? (item.keywords as unknown[]).map((k: unknown) => String(k).toLowerCase()) : [clean.toLowerCase()]
     }));
   } catch {
     return fallback();
@@ -568,7 +568,7 @@ export async function museExtractUrlProduct(url: string, config?: MuseConfig | n
       description: oneLine(String(json.description || ''), 200) || fallback.description,
       sourceDomain: domain,
       sourceUrl: cleanUrl,
-      keywords: Array.isArray(json.keywords) ? json.keywords.map(k => String(k).toLowerCase()) : fallback.keywords
+      keywords: Array.isArray(json.keywords) ? (json.keywords as unknown[]).map((k: unknown) => String(k).toLowerCase()) : fallback.keywords
     };
   } catch {
     return fallback;
