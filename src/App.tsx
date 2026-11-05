@@ -45,6 +45,7 @@ import WishlistModal from './components/WishlistModal';
 import LocationPromptModal from './components/LocationPromptModal';
 import MallSwitcherModal from './components/MallSwitcherModal';
 import AllProductsSheet from './components/AllProductsSheet';
+import { WatchDeviceFrame, CarDeviceFrame, GlassesDeviceFrame, MuseDeviceFrame } from './components/DeviceFrames';
 import { REAL_PRODUCTS, type CatalogProduct } from './config/products';
 
 const VIEWS: { id: DeviceProfile; label: string; icon: LucideIcon }[] = [
@@ -1293,67 +1294,48 @@ export default function App() {
         );
       case 'watch':
         return (
-          <div className="mx-auto w-full max-w-[340px] space-y-3">
+          <WatchDeviceFrame>
             {renderCompassPanel(true)}
-          </div>
+          </WatchDeviceFrame>
         );
       case 'glasses':
         return (
-          <div className="space-y-6">
-            <section className="relative overflow-hidden rounded-[2rem] border border-emerald-500/20 bg-transparent p-6 shadow-none sm:p-8">
-              <HeadingTape heading={compass.heading} targets={targets} selectedId={selectedId} />
-              <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-                <div className="flex gap-5">
-                  <div className="grid h-24 w-24 shrink-0 place-items-center rounded-full border border-emerald-400/30 bg-black/30">
-                    <Navigation2 className={`h-12 w-12 transition-transform duration-300 ${facing ? 'text-emerald-300' : 'text-emerald-100'}`} style={{ transform: `rotate(${relative ?? 0}deg)` }} />
-                  </div>
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-sm text-emerald-300">{selectedReading ? `${selectedReading.node.name}, ${formatDistance(selectedReading.distanceM)}` : 'Looking for stores nearby'}</p>
-                    <p className="text-3xl font-bold tracking-tight text-white">{selectedDeal ? selectedDeal.ad.itemName : guidance}</p>
-                    {selectedDeal && (
-                      <p className="text-2xl font-extrabold tabular-nums text-amber-200">
-                        {formatZAR(selectedDeal.negotiatedPriceZAR ?? selectedDeal.ad.stickerPriceZAR)}
-                        {selectedDeal.negotiatedPriceZAR !== null && <span className="ml-2 text-base font-medium text-slate-500 line-through">{formatZAR(selectedDeal.ad.stickerPriceZAR)}</span>}
-                      </p>
-                    )}
-                    <p className={`text-sm font-semibold ${facing ? 'text-emerald-300' : 'text-slate-300'}`}>{guidance}</p>
-                    <div className="max-w-xs pt-3">{selectedPayButton}</div>
-                  </div>
-                </div>
-                <div>{renderCompactList(4)}</div>
-              </div>
-              <div className="mt-6">{turnControls}</div>
-            </section>
-            <ActivityLog logs={logs} heightClass="h-40" />
-          </div>
+          <GlassesDeviceFrame
+            heading={compass.heading}
+            targets={targets}
+            selectedId={selectedId}
+            selectedDeal={selectedDeal}
+            selectedReading={selectedReading}
+            facing={facing}
+            relative={relative}
+            guidance={guidance}
+            turnControls={turnControls}
+            formatZAR={formatZAR}
+            formatDistance={formatDistance}
+            onPay={storeId => void engine.pay(storeId)}
+            visibleDeals={visibleDeals}
+            onSelectDeal={openDeal}
+            wishlist={wishlist}
+            activityLogs={<ActivityLog logs={logs} heightClass="h-40" />}
+          />
         );
       case 'car':
         return (
-          <div className="space-y-6">
+          <CarDeviceFrame>
             {renderCompassPanel()}
-            <p className="text-center text-xs text-slate-500">Pay only when your car is parked.</p>
-          </div>
+          </CarDeviceFrame>
         );
       case 'muse':
         return (
-          <div className="mx-auto max-w-2xl space-y-5">
-            <section className="rounded-[2rem] border border-white/[0.06] bg-white/[0.02] p-8 text-center backdrop-blur">
-              <div className="flex h-16 items-end justify-center gap-1.5" aria-hidden="true">
-                {[0.35, 0.7, 0.5, 1, 0.6, 0.85, 0.4, 0.65, 0.3].map((scale, index) => (
-                  <span key={index} className={`w-2 rounded-full bg-gradient-to-t from-emerald-500 to-amber-200 ${engine.isScanning ? 'animate-pulse' : ''}`} style={{ height: `${Math.round(scale * 64)}px`, animationDelay: `${index * 80}ms` }} />
-                ))}
-              </div>
-              <p className="mx-auto mt-6 max-w-md text-lg leading-relaxed text-slate-100" aria-live="polite">{directionSentence}</p>
-              <div className="mt-6 flex flex-wrap justify-center gap-3">
-                <button type="button" onClick={() => speak(directionSentence)} className="inline-flex items-center gap-2 rounded-full bg-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-300"><Volume2 className="h-4 w-4" />Read directions aloud</button>
-                {selectedDeal?.status === 'agreed' && (
-                  <button type="button" onClick={() => void engine.pay(selectedDeal.storeId)} className="inline-flex items-center gap-2 rounded-full bg-amber-300 px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-amber-200"><Wallet className="h-4 w-4" />Pay {formatZAR(selectedDeal.negotiatedPriceZAR ?? 0)}</button>
-                )}
-              </div>
-              <p className="mt-4 text-xs text-slate-500">Agreements, payments and errors are read aloud while this view is open.</p>
-            </section>
-            {renderCompassPanel()}
-          </div>
+          <MuseDeviceFrame
+            directionSentence={directionSentence}
+            isScanning={engine.isScanning}
+            selectedDeal={selectedDeal}
+            onSpeak={() => speak(directionSentence)}
+            onPay={storeId => void engine.pay(storeId)}
+            formatZAR={formatZAR}
+            compassPanel={renderCompassPanel()}
+          />
         );
       default:
         return (
